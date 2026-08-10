@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Named "ink" rather than "void": aapt rejects Java keywords as
-         resource names. Same colour as --void elsewhere in the palette. -->
+         resource names. Same colour as the void token in brand/tokens.json. -->
     <color name="ink">#FF04030A</color>
     <color name="surface">#FF0A0812</color>
     <color name="raised">#FF14101F</color>
