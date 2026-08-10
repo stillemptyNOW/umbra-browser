@@ -7,43 +7,43 @@
  * immediately, and the network refresh becomes an optional top-up rather than
  * a prerequisite.
  *
+ * The actual work happens in compile-filters.mjs, in a child process. Undici
+ * can throw `assert(!this.paused)` from a socket tick during these downloads —
+ * an uncatchable crash from this process's point of view, and one that took a
+ * Windows release build down. Isolating it in a child turns a failed build
+ * into a retry, and a failed retry into a warning.
+ *
+ * This script always exits 0. Without a bundled engine the app still works and
+ * fetches lists at runtime, and the shield says which it is using.
+ *
  * Runs from desktop/package.json postinstall, and again in CI before packaging.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FiltersEngine } from '@ghostery/adblocker';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const WORKER = join(HERE, 'compile-filters.mjs');
 const OUT = join(HERE, '..', 'filters', 'engine.bin');
+const ATTEMPTS = 3;
 
-const LISTS = [
-  'https://easylist.to/easylist/easylist.txt',
-  'https://easylist.to/easylist/easyprivacy.txt',
-  'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt',
-  'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt',
-  'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt',
-  'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt',
-  'https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt',
-];
+console.log('umbra filters — compiling 7 lists');
 
-console.log(`umbra filters — compiling ${LISTS.length} lists`);
+for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+  const result = spawnSync(process.execPath, [WORKER], {
+    stdio: 'inherit',
+    timeout: 5 * 60 * 1000,
+  });
 
-let engine;
-try {
-  engine = await FiltersEngine.fromLists(fetch, LISTS);
-} catch (error) {
-  // A build machine without network still has to produce a working app; the
-  // runtime falls back to fetching lists itself and says so in the shield.
-  console.warn(`  could not fetch lists: ${error.message}`);
-  console.warn('  skipping the bundled engine — the app will fetch at runtime');
-  process.exit(0);
+  if (result.status === 0 && existsSync(OUT)) {
+    console.log('done');
+    process.exit(0);
+  }
+
+  const why = result.error ? result.error.message : `exit ${result.status ?? 'signal'}`;
+  console.warn(`  attempt ${attempt}/${ATTEMPTS} failed (${why})`);
 }
 
-const serialised = engine.serialize();
-await mkdir(dirname(OUT), { recursive: true });
-await writeFile(OUT, serialised);
-
-const kb = (serialised.byteLength / 1024).toFixed(0);
-console.log(`  filters/engine.bin (${kb} KB)`);
-console.log('done');
+console.warn('  could not build the bundled engine — the app will fetch at runtime');
+process.exit(0);
