@@ -44,6 +44,9 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // AGP 8 stopped generating BuildConfig unless asked. UmbraApp reads
+        // BuildConfig.DEBUG to decide whether to enable WebView inspection.
+        buildConfig = true
     }
 
     compileOptions {
