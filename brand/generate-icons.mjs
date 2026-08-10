@@ -138,8 +138,16 @@ await write(join(HERE, 'generated', 'umbra.icns'), icns);
 await write(join(ROOT, 'desktop', 'build', 'icon.png'), master);
 await write(join(ROOT, 'desktop', 'build', 'icon.ico'), ico);
 await write(join(ROOT, 'desktop', 'build', 'icon.icns'), icns);
-// used by the browser chrome and the internal pages
-await write(join(ROOT, 'desktop', 'src', 'renderer', 'assets', 'mark.png'), await cutout(256));
+// Assets the browser chrome and the internal pages use.
+//
+// mark-glow.png is the mark on its native black, meant to be drawn with
+// `mix-blend-mode: screen`. That composites it additively, which is what glow
+// artwork actually wants: the black surround vanishes exactly, with none of
+// the faint grey haze an alpha cutout leaves on a not-quite-black surface.
+const rendererAssets = join(ROOT, 'desktop', 'src', 'renderer', 'assets');
+await write(join(rendererAssets, 'mark.png'), await cutout(256));
+await write(join(rendererAssets, 'mark-glow.png'), await onBlack(256));
+await write(join(rendererAssets, 'favicon.png'), await appIcon(32, 1.0));
 
 // --- android ---------------------------------------------------------------
 const androidRes = join(ROOT, 'android', 'app', 'src', 'main', 'res');

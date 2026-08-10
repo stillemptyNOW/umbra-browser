@@ -80,9 +80,15 @@ each is something you can turn off:
 - History is local, capped, and used only for address bar completion.
 - Private windows use an in-memory partition that is wiped on close.
 
-**Because it's a browser and not a manifesto** — tabs you can drag, find in
-page, zoom, downloads, a real context menu, `Ctrl+L`, dev tools, and eight
-themes.
+**Extensions** — unpacked Chrome extensions load into every tab, with their
+content scripts, background workers and action popups. Request blocking is the
+one thing Electron does not wire up, so a content blocker installed here will
+not block anything; Umbra does that job itself. `umbra://extensions` says so
+before you install rather than after.
+
+**Because it's a browser and not a manifesto** — tabs you can drag, close and
+reorder, find in page, zoom, downloads, a real context menu, keyboard
+shortcuts that work while focus is in the page, dev tools, and eight themes.
 
 ## What it is not
 

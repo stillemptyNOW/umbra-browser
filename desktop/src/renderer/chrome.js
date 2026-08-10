@@ -15,8 +15,12 @@ const state = {
   settings: {},
   theme: null,
   themes: [],
+  extensions: [],
+  downloads: [],
   version: {},
 };
+
+let toastTimer = null;
 
 /** What is currently borrowing the full-window chrome overlay. */
 let overlayKind = null;
@@ -72,59 +76,145 @@ function applyTheme(theme) {
 
 // --------------------------------------------------------------------- tabs
 
+/**
+ * Tab nodes are reused between renders, keyed by tab id.
+ *
+ * Rebuilding the strip from scratch each time looked harmless and was not:
+ * pressing a tab's close button fires mousedown first, which activates the
+ * tab, which makes the main process publish new state, which replaced the
+ * button under the cursor — so the click event never completed and tabs could
+ * not be closed at all. Keeping the nodes alive fixes that, and stops the
+ * favicons flickering on every state push besides.
+ */
+const tabNodes = new Map();
+
+function buildTabNode(id) {
+  const node = el('div', 'tab');
+  node.draggable = true;
+  node.dataset.id = String(id);
+  node.setAttribute('role', 'tab');
+
+  const iconSlot = el('div', 'tab-icon');
+  const label = el('span', 'label');
+  const audio = el('button', 'tab-btn audio');
+  audio.tabIndex = -1;
+  const close = el('button', 'tab-btn close');
+  close.tabIndex = -1;
+  close.title = 'Close tab';
+  close.appendChild(icon('close'));
+
+  node.append(iconSlot, label, audio, close);
+
+  // mousedown, not click: the strip re-renders as soon as the tab activates,
+  // and a click needs its element to survive until mouseup.
+  node.addEventListener('mousedown', (event) => {
+    const tabId = Number(node.dataset.id);
+    if (event.button === 1) {
+      event.preventDefault();
+      umbra.tabs.close(tabId);
+      return;
+    }
+    if (event.button !== 0) return;
+    if (close.contains(event.target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      umbra.tabs.close(tabId);
+      return;
+    }
+    if (audio.contains(event.target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      umbra.tabs.mute(tabId, audio.dataset.muted !== 'true');
+      return;
+    }
+    umbra.tabs.activate(tabId);
+  });
+
+  node.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    const tabId = Number(node.dataset.id);
+    openPanel(node, (panel) => {
+      menuItem(panel, { label: 'Close tab', iconName: 'close', onClick: () => umbra.tabs.close(tabId) });
+      menuItem(panel, { label: 'Close other tabs', onClick: () => umbra.tabs.closeOthers(tabId) });
+      separator(panel);
+      menuItem(panel, { label: 'Duplicate', iconName: 'copy', onClick: () => {
+        const source = state.tabs.find((t) => t.id === tabId);
+        if (source?.url) umbra.tabs.create({ url: source.url, background: true });
+      } });
+      menuItem(panel, { label: 'Reload', iconName: 'reload', onClick: () => umbra.nav.reload(false, tabId) });
+    });
+  });
+
+  wireTabDrag(node);
+  tabNodes.set(id, { node, iconSlot, label, audio, close });
+  return tabNodes.get(id);
+}
+
 function renderTabs() {
   const strip = $('tabs');
-  strip.replaceChildren();
+
+  for (const [id, entry] of tabNodes) {
+    if (!state.tabs.some((t) => t.id === id)) {
+      entry.node.remove();
+      tabNodes.delete(id);
+    }
+  }
 
   for (const tab of state.tabs) {
-    const node = el('div', 'tab' + (tab.active ? ' active' : ''));
-    node.draggable = true;
-    node.dataset.id = String(tab.id);
-    node.setAttribute('role', 'tab');
+    const entry = tabNodes.get(tab.id) || buildTabNode(tab.id);
+    const { node, iconSlot, label, audio } = entry;
+
+    node.classList.toggle('active', tab.active);
     node.title = tab.title;
 
-    if (tab.loading) {
-      node.appendChild(el('div', 'spinner'));
-    } else if (tab.favicon) {
-      const img = el('img', 'favicon');
-      img.src = tab.favicon;
-      img.onerror = () => img.replaceWith(icon('globe', 'favicon fallback'));
-      node.appendChild(img);
-    } else {
-      node.appendChild(icon('globe', 'favicon fallback'));
+    // The icon slot only changes when the tab's state actually changes, so a
+    // favicon does not get torn down and refetched on every publish.
+    const wanted = tab.loading ? 'spinner' : tab.favicon ? `img:${tab.favicon}` : 'globe';
+    if (iconSlot.dataset.kind !== wanted) {
+      iconSlot.dataset.kind = wanted;
+      iconSlot.replaceChildren();
+      if (tab.loading) {
+        iconSlot.appendChild(el('div', 'spinner'));
+      } else if (tab.favicon) {
+        const img = el('img', 'favicon');
+        img.src = tab.favicon;
+        img.alt = '';
+        img.onerror = () => {
+          iconSlot.dataset.kind = 'globe';
+          iconSlot.replaceChildren(icon('globe', 'favicon fallback'));
+        };
+        iconSlot.appendChild(img);
+      } else {
+        iconSlot.appendChild(icon('globe', 'favicon fallback'));
+      }
     }
 
-    node.appendChild(el('span', 'label', tab.title));
+    if (label.textContent !== tab.title) label.textContent = tab.title;
 
-    if (tab.audible || tab.muted) {
-      const sound = el('button', 'close');
-      sound.appendChild(icon(tab.muted ? 'mute' : 'sound'));
-      sound.title = tab.muted ? 'Unmute tab' : 'Mute tab';
-      sound.style.opacity = '0.7';
-      sound.onclick = (e) => { e.stopPropagation(); umbra.tabs.mute(tab.id, !tab.muted); };
-      node.appendChild(sound);
+    const showAudio = tab.audible || tab.muted;
+    audio.hidden = !showAudio;
+    if (showAudio) {
+      audio.dataset.muted = String(!!tab.muted);
+      audio.title = tab.muted ? 'Unmute tab' : 'Mute tab';
+      const kind = tab.muted ? 'mute' : 'sound';
+      if (audio.dataset.kind !== kind) {
+        audio.dataset.kind = kind;
+        audio.replaceChildren(icon(kind));
+      }
     }
 
-    const close = el('button', 'close');
-    close.appendChild(icon('close'));
-    close.title = 'Close tab';
-    close.onclick = (e) => { e.stopPropagation(); umbra.tabs.close(tab.id); };
-    node.appendChild(close);
-
-    node.onmousedown = (e) => {
-      if (e.button === 1) { e.preventDefault(); umbra.tabs.close(tab.id); }
-      else if (e.button === 0) umbra.tabs.activate(tab.id);
-    };
-
-    wireTabDrag(node, tab);
+    // appendChild moves an existing node rather than cloning it, so this both
+    // inserts new tabs and keeps the order right after a drag.
     strip.appendChild(node);
   }
 }
 
-function wireTabDrag(node, tab) {
+function wireTabDrag(node) {
+  const idOf = () => Number(node.dataset.id);
+
   node.ondragstart = (e) => {
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/umbra-tab', String(tab.id));
+    e.dataTransfer.setData('text/umbra-tab', String(idOf()));
     node.classList.add('dragging');
   };
   node.ondragend = () => {
@@ -143,9 +233,10 @@ function wireTabDrag(node, tab) {
   node.ondragleave = () => node.classList.remove('drop-before', 'drop-after');
   node.ondrop = (e) => {
     e.preventDefault();
+    node.classList.remove('drop-before', 'drop-after');
     const dragged = Number(e.dataTransfer.getData('text/umbra-tab'));
-    if (!dragged || dragged === tab.id) return;
-    const target = state.tabs.findIndex((t) => t.id === tab.id);
+    if (!dragged || dragged === idOf()) return;
+    const target = state.tabs.findIndex((t) => t.id === idOf());
     const before = e.offsetX < node.offsetWidth / 2;
     umbra.tabs.move(dragged, before ? target : target + 1);
   };
@@ -203,6 +294,54 @@ function renderToolbar() {
   $('omni').placeholder = `Search with ${engineName} or enter an address`;
 }
 
+// ------------------------------------------------------------- extensions
+
+function renderExtensions() {
+  const bar = $('extBar');
+  bar.replaceChildren();
+
+  for (const extension of state.extensions) {
+    if (!extension.enabled || extension.error) continue;
+
+    const button = el('button', 'ext-btn');
+    button.title = extension.action?.title || extension.name;
+
+    if (extension.iconUrl) {
+      const img = el('img');
+      img.src = extension.iconUrl;
+      img.alt = '';
+      img.onerror = () => img.replaceWith(icon('puzzle'));
+      button.appendChild(img);
+    } else {
+      button.appendChild(icon('puzzle'));
+    }
+
+    button.onclick = (event) => {
+      event.stopPropagation();
+      closeOverlay();
+      const rect = button.getBoundingClientRect();
+      // The popup is a real view owned by the main process, so it needs the
+      // overlay expanded underneath it to catch the dismissing click.
+      umbra.ui.expand(true);
+      overlayKind = 'extension';
+      $('overlay').hidden = false;
+      $('panel').hidden = true;
+      $('suggest').hidden = true;
+      umbra.extensions.popup(extension.path, { right: rect.right, bottom: rect.bottom });
+    };
+
+    bar.appendChild(button);
+  }
+}
+
+function toast(message) {
+  const node = $('toast');
+  node.textContent = message;
+  node.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { node.hidden = true; }, 2600);
+}
+
 // ---------------------------------------------------------------- overlay
 
 /** The chrome view only covers the toolbar strip until we ask for the window. */
@@ -217,8 +356,10 @@ function setOverlay(kind) {
 
 function closeOverlay() {
   if (overlayKind === null) return;
+  if (overlayKind === 'extension') umbra.extensions.closePopup();
   suggestions = [];
   suggestIndex = -1;
+  panelAnchor = null;
   setOverlay(null);
 }
 
@@ -229,18 +370,26 @@ $('overlay').addEventListener('mousedown', (e) => {
   }
 });
 
-function openPanel(anchor, build) {
-  const panel = $('panel');
-  panel.replaceChildren();
-  build(panel);
-  setOverlay('panel');
+let panelAnchor = null;
 
-  const rect = anchor.getBoundingClientRect();
+function positionPanel() {
+  const panel = $('panel');
+  if (!panelAnchor || panel.hidden) return;
+  const rect = panelAnchor.getBoundingClientRect();
   panel.style.top = `${rect.bottom + 6}px`;
   // Prefer right-aligning to the anchor, but never run off the window.
   const width = Math.min(panel.offsetWidth || 320, window.innerWidth - 20);
   const left = Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10);
   panel.style.left = `${left}px`;
+}
+
+function openPanel(anchor, build) {
+  const panel = $('panel');
+  panel.replaceChildren();
+  build(panel);
+  panelAnchor = anchor;
+  setOverlay('panel');
+  positionPanel();
 }
 
 function toggleRow(parent, { label, sub, checked, onChange }) {
@@ -340,7 +489,7 @@ function buildMenuPanel(panel) {
   const tab = activeTab();
 
   menuItem(panel, { label: 'New tab', hint: 'Ctrl+T', iconName: 'plus', onClick: () => umbra.tabs.create({}) });
-  menuItem(panel, { label: 'New window', hint: 'Ctrl+N', onClick: () => umbra.ui.newWindow(false) });
+  menuItem(panel, { label: 'New window', hint: 'Ctrl+N', iconName: 'window', onClick: () => umbra.ui.newWindow(false) });
   menuItem(panel, { label: 'New private window', hint: 'Ctrl+Shift+N', iconName: 'shield', onClick: () => umbra.ui.newWindow(true) });
 
   separator(panel);
@@ -348,21 +497,35 @@ function buildMenuPanel(panel) {
   const zoom = el('div', 'row');
   zoom.appendChild(el('div', 'label', 'Zoom'));
   const minus = el('button', 'icon-btn sm');
-  minus.appendChild(icon('close'));
-  minus.style.transform = 'rotate(45deg)';
+  minus.appendChild(icon('minus'));
+  minus.title = 'Zoom out';
   minus.onclick = () => umbra.nav.zoom(-0.5);
-  const plus = el('button', 'icon-btn sm');
-  plus.appendChild(icon('plus'));
-  plus.onclick = () => umbra.nav.zoom(0.5);
   const reset = el('button', 'icon-btn sm');
-  reset.textContent = '100%';
+  reset.textContent = 'Reset';
   reset.style.width = 'auto';
   reset.style.padding = '0 8px';
+  reset.title = 'Actual size';
   reset.onclick = () => umbra.nav.zoom(0);
+  const plus = el('button', 'icon-btn sm');
+  plus.appendChild(icon('plus'));
+  plus.title = 'Zoom in';
+  plus.onclick = () => umbra.nav.zoom(0.5);
   zoom.append(minus, reset, plus);
   panel.appendChild(zoom);
 
   menuItem(panel, { label: 'Find in page', hint: 'Ctrl+F', iconName: 'search', onClick: () => showFind(true) });
+  menuItem(panel, {
+    label: 'Downloads',
+    hint: state.downloads.length ? String(state.downloads.length) : '',
+    iconName: 'down',
+    onClick: () => openPanel($('menuBtn'), buildDownloadsPanel),
+  });
+  menuItem(panel, {
+    label: 'Extensions',
+    hint: state.extensions.length ? String(state.extensions.length) : '',
+    iconName: 'puzzle',
+    onClick: () => umbra.tabs.create({ url: 'umbra://extensions' }),
+  });
 
   separator(panel);
   panel.appendChild(el('h4', null, 'Theme'));
@@ -385,19 +548,66 @@ function buildMenuPanel(panel) {
   panel.appendChild(grid);
 
   separator(panel);
-  menuItem(panel, { label: 'Settings', hint: 'Ctrl+,', onClick: () => umbra.tabs.create({ url: 'umbra://settings' }) });
-  menuItem(panel, { label: 'Clear browsing data', onClick: () => clearData() });
-  menuItem(panel, { label: 'Developer tools', hint: 'F12', onClick: () => umbra.nav.devtools() });
+  menuItem(panel, { label: 'Settings', hint: 'Ctrl+,', iconName: 'settings', onClick: () => umbra.tabs.create({ url: 'umbra://settings' }) });
+  menuItem(panel, { label: 'Clear browsing data', iconName: 'broom', onClick: () => clearData() });
+  menuItem(panel, { label: 'Developer tools', hint: 'F12', iconName: 'code', onClick: () => umbra.nav.devtools() });
+
+  if (tab && tab.url) {
+    menuItem(panel, { label: 'Copy page address', iconName: 'copy', onClick: () => { umbra.copy(tab.url); toast('Address copied'); } });
+  }
+
   separator(panel);
   menuItem(panel, {
     label: `About Umbra ${state.version.umbra || ''}`.trim(),
     hint: `Chromium ${(state.version.chromium || '').split('.')[0]}`,
+    iconName: 'info',
     onClick: () => umbra.tabs.create({ url: 'umbra://about' }),
   });
+}
 
-  if (tab && tab.url) {
-    separator(panel);
-    menuItem(panel, { label: 'Copy page address', onClick: () => umbra.copy(tab.url) });
+function formatBytes(bytes) {
+  if (!bytes) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return `${value < 10 && unit > 0 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+function buildDownloadsPanel(panel) {
+  panel.appendChild(el('h4', null, 'Downloads'));
+
+  if (!state.downloads.length) {
+    const empty = el('div', 'row');
+    empty.appendChild(el('div', 'label', 'Nothing downloaded yet.'));
+    empty.style.color = 'var(--faint)';
+    panel.appendChild(empty);
+    return;
+  }
+
+  for (const item of state.downloads.slice(0, 12)) {
+    const row = el('div', 'row');
+    const text = el('div', 'label');
+    text.appendChild(document.createTextNode(item.filename));
+
+    const done = item.state === 'completed';
+    const detail = done
+      ? formatBytes(item.received)
+      : item.state === 'cancelled' || item.state === 'interrupted'
+        ? item.state
+        : `${formatBytes(item.received)}${item.total ? ` of ${formatBytes(item.total)}` : ''}`;
+    text.appendChild(el('span', 'sub', detail));
+    row.appendChild(text);
+
+    if (done && item.path) {
+      const open = el('button', 'icon-btn sm');
+      open.appendChild(icon('copy'));
+      open.title = 'Copy file path';
+      open.onclick = () => { umbra.copy(item.path); toast('Path copied'); };
+      row.appendChild(open);
+    }
+
+    panel.appendChild(row);
   }
 }
 
@@ -563,9 +773,12 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && overlayKind) closeOverlay();
 });
 
+// Opening a popover asks the main process to expand this view to the whole
+// window, which itself fires a resize. Closing popovers on resize therefore
+// closed every popover the instant it opened — reposition instead.
 window.addEventListener('resize', () => {
   if (overlayKind === 'suggest') renderSuggestions();
-  else if (overlayKind === 'panel') closeOverlay();
+  else if (overlayKind === 'panel') positionPanel();
 });
 
 // ------------------------------------------------------------- main process
@@ -582,6 +795,21 @@ umbra.on('settings', (payload) => {
   applyTheme(payload.theme);
   renderToolbar();
   if (overlayKind === 'panel') closeOverlay();
+});
+
+umbra.on('extensions', (list) => {
+  state.extensions = list;
+  renderExtensions();
+});
+
+umbra.on('toast', (message) => toast(message));
+
+umbra.on('downloads', (list) => {
+  const wasEmpty = state.downloads.length === 0;
+  state.downloads = list;
+  const latest = list[0];
+  if (wasEmpty && latest) toast(`Downloading ${latest.filename}`);
+  else if (latest?.state === 'completed') toast(`Saved ${latest.filename}`);
 });
 
 umbra.on('find-result', (result) => {
@@ -603,4 +831,9 @@ umbra.settings.read().then((payload) => {
   state.engines = payload.engines;
   applyTheme(payload.theme);
   renderToolbar();
+});
+
+umbra.extensions.list().then((list) => {
+  state.extensions = list;
+  renderExtensions();
 });

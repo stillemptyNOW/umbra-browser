@@ -8,6 +8,7 @@
  */
 const { app, protocol, session, dialog } = require('electron');
 
+const { log, installStdioGuards } = require('./log');
 const { hardenCommandLine, genericUserAgent } = require('./privacy');
 const { settings } = require('./settings');
 const { initBlocker } = require('./adblock');
@@ -18,6 +19,7 @@ const { buildMenu } = require('./menu');
 
 // --- before ready -----------------------------------------------------------
 
+installStdioGuards();
 hardenCommandLine(app);
 
 // umbra:// behaves like a real web origin so internal pages get a secure
@@ -67,7 +69,7 @@ async function main() {
       enableBuiltInResolver: true,
     });
   } catch (err) {
-    console.error('[umbra] DNS configuration failed:', err.message);
+    log.error('[umbra] DNS configuration failed:', err.message);
   }
 
   app.userAgentFallback = genericUserAgent();
@@ -79,7 +81,7 @@ async function main() {
   // Certificate problems are fatal. No click-through, ever.
   app.on('certificate-error', (event, _wc, url, error) => {
     event.preventDefault();
-    console.warn('[umbra] rejected certificate for', url, error);
+    log.warn('[umbra] rejected certificate for', url, error);
   });
 
   // Nothing may attach a debugger or spawn a renderer we did not configure.
@@ -88,6 +90,10 @@ async function main() {
   });
 
   await initBlocker(settings);
+
+  // Extensions load before the first window so their content scripts are in
+  // place for the first page, not the second.
+  await windows.prepareDefaultSession();
 
   ipc.register(windows);
   buildMenu(windows);

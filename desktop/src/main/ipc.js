@@ -179,7 +179,10 @@ function register(windows) {
 
   ipcMain.on('umbra:chrome-expanded', (event, expanded) => {
     const c = controllerFor(event);
-    if (c) c.setChromeExpanded(!!expanded);
+    if (!c) return;
+    c.setChromeExpanded(!!expanded);
+    // Collapsing the overlay means the user dismissed whatever was open.
+    if (!expanded) c.closeExtensionPopup();
   });
 
   ipcMain.on('umbra:find', (event, { action, text, forward = true }) => {
@@ -236,6 +239,50 @@ function register(windows) {
       c.publish();
     }
   });
+
+  // -- extensions ---------------------------------------------------------
+
+  const extensions = require('./extensions');
+
+  const withIcons = () =>
+    extensions.list().map((e) => ({ ...e, iconUrl: extensions.iconDataUrl(e.path) }));
+
+  ipcMain.handle('umbra:extensions-list', () => withIcons());
+
+  ipcMain.handle('umbra:extension-add', async (event) => {
+    const c = controllerFor(event);
+    const result = await extensions.addFromDialog(c?.win);
+    if (result.ok) broadcastExtensions();
+    return result;
+  });
+
+  ipcMain.handle('umbra:extension-remove', (_event, dir) => {
+    const result = extensions.remove(dir);
+    broadcastExtensions();
+    return result;
+  });
+
+  ipcMain.handle('umbra:extension-toggle', (_event, { path: dir, enabled }) => {
+    const result = extensions.setEnabled(dir, enabled);
+    broadcastExtensions();
+    return result;
+  });
+
+  ipcMain.on('umbra:extension-popup', (event, { path: dir, rect }) => {
+    const c = controllerFor(event);
+    if (c && !c.openExtensionPopup(dir, rect)) {
+      // No popup in the manifest — the extension is background-only.
+      c.send('toast', 'That extension has no popup.');
+    }
+  });
+
+  ipcMain.on('umbra:extension-popup-close', (event) => {
+    controllerFor(event)?.closeExtensionPopup();
+  });
+
+  function broadcastExtensions() {
+    for (const c of windowsApi.allWindows()) c.send('extensions', withIcons());
+  }
 
   ipcMain.handle('umbra:suggest', (event, query) => {
     const c = controllerFor(event);

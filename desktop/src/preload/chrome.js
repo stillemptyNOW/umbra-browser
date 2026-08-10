@@ -10,6 +10,8 @@ const INBOUND = new Set([
   'tabs',
   'settings',
   'downloads',
+  'extensions',
+  'toast',
   'find-result',
   'focus-omnibox',
   'focus-find',
@@ -55,6 +57,15 @@ contextBridge.exposeInMainWorld('umbra', {
   settings: {
     read: () => ipcRenderer.invoke('umbra:settings-get'),
     write: (key, value) => send('settings-set', { key, value }),
+  },
+
+  extensions: {
+    list: () => ipcRenderer.invoke('umbra:extensions-list'),
+    add: () => ipcRenderer.invoke('umbra:extension-add'),
+    remove: (path) => ipcRenderer.invoke('umbra:extension-remove', path),
+    toggle: (path, enabled) => ipcRenderer.invoke('umbra:extension-toggle', { path, enabled }),
+    popup: (path, rect) => send('extension-popup', { path, rect }),
+    closePopup: () => send('extension-popup-close'),
   },
 
   data: {

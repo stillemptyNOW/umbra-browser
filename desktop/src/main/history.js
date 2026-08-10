@@ -9,6 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { app } = require('electron');
+const { readJsonSync, writeJsonSync } = require('./store');
 
 const MAX_ENTRIES = 4000;
 const SKIP = /^(umbra|about|data|blob|chrome|devtools):/i;
@@ -23,25 +24,17 @@ function file() {
 function load() {
   if (entries) return entries;
   entries = new Map();
-  try {
-    const raw = JSON.parse(fs.readFileSync(file(), 'utf8'));
-    for (const e of raw) entries.set(e.url, e);
-  } catch { /* first run */ }
+  const raw = readJsonSync(file(), []);
+  if (Array.isArray(raw)) for (const e of raw) if (e?.url) entries.set(e.url, e);
   return entries;
 }
 
 function save() {
   clearTimeout(writeTimer);
   writeTimer = setTimeout(() => {
-    try {
-      const list = [...load().values()].sort((a, b) => b.last - a.last).slice(0, MAX_ENTRIES);
-      entries = new Map(list.map((e) => [e.url, e]));
-      const tmp = file() + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(list), 'utf8');
-      fs.renameSync(tmp, file());
-    } catch (err) {
-      console.error('[umbra] could not persist history:', err.message);
-    }
+    const list = [...load().values()].sort((a, b) => b.last - a.last).slice(0, MAX_ENTRIES);
+    entries = new Map(list.map((e) => [e.url, e]));
+    writeJsonSync(file(), list, { pretty: false });
   }, 1500);
 }
 

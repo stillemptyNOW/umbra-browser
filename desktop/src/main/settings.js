@@ -4,8 +4,8 @@
  * is ever synced anywhere: there is no account, no server, no telemetry.
  */
 const { app } = require('electron');
-const fs = require('node:fs');
 const path = require('node:path');
+const { readJsonSync, writeJsonSync } = require('./store');
 
 const DEFAULTS = Object.freeze({
   // appearance
@@ -93,12 +93,8 @@ class Settings {
   }
 
   load() {
-    try {
-      const raw = fs.readFileSync(this.file, 'utf8');
-      this.values = deepMerge(DEFAULTS, JSON.parse(raw));
-    } catch {
-      // First run, or the file is unreadable — defaults are already in place.
-    }
+    const raw = readJsonSync(this.file, null);
+    if (raw && typeof raw === 'object') this.values = deepMerge(DEFAULTS, raw);
     return this.values;
   }
 
@@ -132,14 +128,7 @@ class Settings {
 
   saveNow() {
     clearTimeout(this._writeTimer);
-    try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(this.values, null, 2), 'utf8');
-      fs.renameSync(tmp, this.file);
-    } catch (err) {
-      console.error('[umbra] could not persist settings:', err.message);
-    }
+    writeJsonSync(this.file, this.values);
   }
 
   searchTemplate() {

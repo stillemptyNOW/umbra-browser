@@ -8,6 +8,7 @@ const path = require('node:path');
 const { WebContentsView, Menu, clipboard, shell } = require('electron');
 const { allowInsecure, wasUpgraded } = require('./rewrite');
 const { resetTabStats, getStats } = require('./adblock');
+const { log } = require('./log');
 
 const CONTENT_PRELOAD = path.join(__dirname, '..', 'preload', 'content.js');
 const NEW_TAB = 'umbra://newtab';
@@ -79,6 +80,9 @@ class Tab {
     const push = () => this.host.publish();
 
     wc.setWebRTCIPHandlingPolicy(this.host.webrtcPolicy());
+    // Shortcuts have to work while focus is inside a page, which is where it
+    // spends nearly all of its time.
+    this.host.attachShortcuts(wc);
 
     wc.on('page-title-updated', (_e, title) => {
       this.title = title;
@@ -180,7 +184,7 @@ class Tab {
       if (EXTERNAL_SCHEMES.test(url)) {
         shell.openExternal(url).catch(() => {});
       } else {
-        console.warn('[umbra] refused navigation to an unhandled scheme:', url.slice(0, 64));
+        log.warn('[umbra] refused navigation to an unhandled scheme:', url.slice(0, 64));
       }
     });
   }

@@ -356,6 +356,11 @@ if (cfg.internal) {
     clearData: (what) => ipcRenderer.invoke('umbra:clear-data', what),
     sites: () => ipcRenderer.invoke('umbra:sites-list'),
     forget: (host) => ipcRenderer.send('umbra:site-forget', host),
+    extensions: () => ipcRenderer.invoke('umbra:extensions-list'),
+    addExtension: () => ipcRenderer.invoke('umbra:extension-add'),
+    removeExtension: (path) => ipcRenderer.invoke('umbra:extension-remove', path),
+    toggleExtension: (path, enabled) =>
+      ipcRenderer.invoke('umbra:extension-toggle', { path, enabled }),
     search: (query) => ipcRenderer.send('umbra:internal-search', query),
     navigate: (url) => ipcRenderer.send('umbra:internal-navigate', url),
     openSettings: () => ipcRenderer.send('umbra:internal-settings'),

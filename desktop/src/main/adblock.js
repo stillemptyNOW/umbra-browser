@@ -16,8 +16,9 @@
  */
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { app } = require('electron');
+const { app, ipcMain } = require('electron');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
+const { log } = require('./log');
 
 const BUNDLED = path.join(__dirname, '..', '..', 'filters', 'engine.bin');
 const REFRESH_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
@@ -68,7 +69,7 @@ async function refreshInBackground() {
     state.updatedAt = Date.now();
   } catch (err) {
     // Offline, or the CDN is unreachable. The bundled engine carries on.
-    console.warn('[umbra] filter refresh failed:', err.message);
+    log.warn('[umbra] filter refresh failed:', err.message);
   }
 }
 
@@ -108,7 +109,7 @@ async function initBlocker(settings) {
   // Carry on unprotected but honest rather than refusing to start.
   if (!blocker) {
     blocker = new ElectronBlocker();
-    console.error('[umbra] no filter engine available:', state.error);
+    log.error('[umbra] no filter engine available:', state.error);
   }
 
   blocker.on('request-blocked', (event) => recordBlock(event.request ?? event));
@@ -129,8 +130,24 @@ async function initBlocker(settings) {
  * and blocker.onHeadersReceived. Electron only keeps one listener per event, so
  * composing them in one place is the only way to run both.
  */
+/**
+ * The blocker's cosmetic-filter IPC handlers are global, not per session, but
+ * enableBlockingInSession registers them unconditionally — so calling it for a
+ * second partition throws "Attempted to register a second handler" and takes
+ * the process with it. That made opening any private window fatal.
+ *
+ * Dropping the handlers first and letting it re-register is safe: they are the
+ * same two methods on the same blocker instance either way, and the preload
+ * registration that actually is per-session still happens.
+ */
+const COSMETIC_HANDLERS = [
+  '@ghostery/adblocker/inject-cosmetic-filters',
+  '@ghostery/adblocker/is-mutation-observer-enabled',
+];
+
 function enableInSession(ses) {
   if (!blocker) return;
+  for (const channel of COSMETIC_HANDLERS) ipcMain.removeHandler(channel);
   blocker.enableBlockingInSession(ses);
 }
 

@@ -13,6 +13,9 @@ const { settings } = require('./settings');
 const { hardenSession, genericUserAgent } = require('./privacy');
 const { enableInSession, getBlocker, getStats } = require('./adblock');
 const { serveOn } = require('./internal');
+const extensions = require('./extensions');
+const { log } = require('./log');
+const shortcuts = require('./shortcuts');
 const { TabManager, NEW_TAB } = require('./tabs');
 const { getTheme } = require('./themes');
 const { resolveInput } = require('./urls');
@@ -27,6 +30,9 @@ const FINDBAR_H = 44;
 /** A favicon larger than this is not a favicon. */
 const MAX_FAVICON_BYTES = 256 * 1024;
 const MAX_FAVICON_CACHE = 256;
+
+const POPUP_W = 380;
+const POPUP_H = 560;
 
 const WEBRTC_POLICIES = {
   default: 'default',
@@ -50,6 +56,27 @@ function prepareSession(partition) {
   // hardenSession takes over the webRequest listeners and calls back into it.
   enableInSession(ses);
   hardenSession(ses, { settings, getBlocker });
+
+  // Fire and forget for private windows, which are created on demand. The
+  // default session is awaited during start-up instead, so extensions are in
+  // place before the first page loads — see prepareDefaultSession.
+  extensions.loadInto(ses, partition).catch((err) => {
+    log.error('[umbra] extensions failed to load:', err.message);
+  });
+  return ses;
+}
+
+/** Await extension loading for the main profile before the first window. */
+async function prepareDefaultSession() {
+  const partition = 'persist:umbra';
+  const ses = session.fromPartition(partition);
+  if (!hardenedPartitions.has(partition)) {
+    hardenedPartitions.add(partition);
+    serveOn(ses);
+    enableInSession(ses);
+    hardenSession(ses, { settings, getBlocker });
+  }
+  await extensions.loadInto(ses, partition);
   return ses;
 }
 
@@ -63,6 +90,7 @@ class BrowserWindowController {
     this.fullScreen = false;
     this.downloads = [];
     this.favicons = new Map();
+    this.popup = null;
 
     const saved = settings.get('windowState');
     const bounds = this.#sanitiseBounds(saved);
@@ -85,6 +113,10 @@ class BrowserWindowController {
     });
     if (saved?.maximized) this.win.maximize();
 
+    // Hands this window the application menu, which is what makes Ctrl+T and
+    // the rest of the accelerators fire at all.
+    require('./menu').attachTo(this.win);
+
     this.chrome = new WebContentsView({
       webPreferences: {
         preload: CHROME_PRELOAD,
@@ -100,7 +132,29 @@ class BrowserWindowController {
     });
     this.chrome.setBackgroundColor('#00000000');
     this.win.contentView.addChildView(this.chrome);
+
+    // A silent exception in the chrome renderer looks exactly like a dead
+    // button, which is a miserable thing to debug from a screenshot. Surface
+    // them on the main process's stderr.
+    this.chrome.webContents.on('console-message', (...args) => {
+      const [event, legacyLevel, legacyMessage, legacyLine, legacySource] = args;
+      const level = event?.level ?? legacyLevel;
+      const message = event?.message ?? legacyMessage;
+      const line = event?.lineNumber ?? legacyLine;
+      const source = event?.sourceId ?? legacySource;
+      if (level === 'error' || level === 3 || level === 'warning' || level === 2) {
+        log.error(`[umbra chrome] ${message}  (${source}:${line})`);
+      }
+    });
+
+    shortcuts.attach(this.chrome.webContents, this);
     this.chrome.webContents.loadURL(CHROME_URL);
+
+    // `npm run dev` opens the inspector on the browser's own interface, which
+    // is otherwise unreachable — Ctrl+Shift+I targets the page, not the chrome.
+    if (process.argv.includes('--dev')) {
+      this.chrome.webContents.openDevTools({ mode: 'detach' });
+    }
 
     this.tabs = new TabManager(this);
 
@@ -180,6 +234,60 @@ class BrowserWindowController {
     this.layout();
   }
 
+  // -- extension action popups ----------------------------------------------
+
+  /**
+   * Extension popups are real pages on a chrome-extension:// origin, so they
+   * need their own view rather than an iframe in the chrome UI — the chrome's
+   * CSP forbids remote origins, and rightly so.
+   */
+  openExtensionPopup(extensionPath, anchor) {
+    this.closeExtensionPopup();
+
+    let url;
+    try {
+      url = extensions.popupUrl(extensionPath);
+    } catch {
+      url = null;
+    }
+    if (!url) return false;
+
+    this.popup = new WebContentsView({
+      webPreferences: {
+        partition: this.partition,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    this.popup.setBackgroundColor(getTheme(settings.get('theme')).colors.surface);
+    this.win.contentView.addChildView(this.popup);
+
+    const { width, height } = this.win.getContentBounds();
+    const w = Math.min(POPUP_W, width - 20);
+    const h = Math.min(POPUP_H, height - this.chromeHeight() - 20);
+    const right = anchor?.right ?? width - 10;
+    this.popup.setBounds({
+      x: Math.max(10, Math.min(Math.round(right - w), width - w - 10)),
+      y: this.chromeHeight() + 4,
+      width: w,
+      height: h,
+    });
+
+    this.popup.webContents.loadURL(url).catch(() => this.closeExtensionPopup());
+    this.popup.webContents.once('did-finish-load', () => this.popup?.webContents.focus());
+    return true;
+  }
+
+  closeExtensionPopup() {
+    if (!this.popup) return;
+    try {
+      this.win.contentView.removeChildView(this.popup);
+      this.popup.webContents.close();
+    } catch { /* already gone */ }
+    this.popup = null;
+  }
+
   setFindOpen(open) {
     if (this.findOpen === open) return;
     this.findOpen = open;
@@ -216,6 +324,7 @@ class BrowserWindowController {
 
     this.win.on('closed', () => {
       windows.delete(this);
+      this.closeExtensionPopup();
       this.tabs.destroyAll();
       if (this.isPrivate) {
         // The partition is in-memory, but the HTTP cache and any code caches
@@ -261,6 +370,15 @@ class BrowserWindowController {
 
   createTab(opts) {
     return this.tabs.create(opts);
+  }
+
+  newWindow(isPrivate) {
+    createWindow({ isPrivate: !!isPrivate });
+  }
+
+  /** Tabs call this so their pages get the same shortcuts as the chrome. */
+  attachShortcuts(webContents) {
+    shortcuts.attach(webContents, this);
   }
 
   webrtcPolicy() {
@@ -375,4 +493,11 @@ function focusedWindow() {
   return allWindows().find((w) => !w.win.isDestroyed() && w.win.isFocused()) || allWindows()[0] || null;
 }
 
-module.exports = { createWindow, allWindows, focusedWindow, prepareSession, BrowserWindowController };
+module.exports = {
+  createWindow,
+  allWindows,
+  focusedWindow,
+  prepareSession,
+  prepareDefaultSession,
+  BrowserWindowController,
+};

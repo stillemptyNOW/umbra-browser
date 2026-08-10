@@ -5,6 +5,8 @@
  */
 const { Menu, app, shell } = require('electron');
 
+let built = null;
+
 function buildMenu(windows) {
   const focused = () => windows.focusedWindow();
   const tab = () => focused()?.tabs.active || null;
@@ -113,7 +115,21 @@ function buildMenu(windows) {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  built = menu;
   return menu;
+}
+
+/**
+ * The application menu is what registers Umbra's keyboard shortcuts, but
+ * setApplicationMenu only reaches BrowserWindows — Umbra's windows are
+ * BaseWindows, so every accelerator silently did nothing until each window
+ * was handed the menu itself. macOS has a single menu bar and needs none of
+ * this.
+ */
+function attachTo(win) {
+  if (process.platform === 'darwin' || !built) return;
+  win.setMenu(built);
+  win.setMenuBarVisibility(false);
 }
 
 function zoom(tab, delta, reset = false) {
@@ -121,4 +137,4 @@ function zoom(tab, delta, reset = false) {
   tab.wc.setZoomLevel(reset ? 0 : Math.max(-5, Math.min(5, tab.wc.getZoomLevel() + delta)));
 }
 
-module.exports = { buildMenu };
+module.exports = { buildMenu, attachTo };
