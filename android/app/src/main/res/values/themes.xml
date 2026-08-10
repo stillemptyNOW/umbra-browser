@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
     <style name="Theme.Umbra" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorOnPrimary">#FFFFFFFF</item>
@@ -16,6 +16,5 @@
         <item name="android:textColorPrimary">@color/text</item>
         <item name="android:textColorSecondary">@color/muted</item>
         <item name="android:textColorHint">@color/faint</item>
-        <tools:targetApi>o</tools:targetApi>
     </style>
 </resources>
