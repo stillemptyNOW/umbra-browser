@@ -15,6 +15,9 @@
   },
   "main": "src/main/index.js",
   "scripts": {
+    "postinstall": "node scripts/fetch-filters.mjs",
+    "filters": "node scripts/fetch-filters.mjs",
+    "test": "node --test \"test/*.test.js\"",
     "start": "electron .",
     "dev": "electron . --dev",
     "dist": "electron-builder",

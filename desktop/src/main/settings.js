@@ -21,6 +21,10 @@ const DEFAULTS = Object.freeze({
   blockAds: true,
   blockTrackers: true,
   blockCosmetics: true,
+  // Filters ship inside the app, so this only tops them up. It is the one
+  // request Umbra makes without being asked; turning it off means running on
+  // whatever the installed build was compiled with.
+  updateFilters: true,
 
   // network privacy
   httpsOnly: true,

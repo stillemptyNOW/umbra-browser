@@ -16,6 +16,20 @@ None. To be specific about what that means:
   Chromium fork builds with `enable_reporting = false`.
 - No update check. Umbra does not phone home to see if it is out of date; you
   find out from the releases page like everyone else.
+
+### The one request Umbra makes on its own
+
+Filter lists go stale, and a stale blocklist is a blocklist that does not work.
+Umbra ships with the lists already compiled in, so the first launch blocks
+immediately and needs no network at all. After that, roughly every three days,
+it fetches a refreshed engine from the filter CDN.
+
+That request carries no identifier, no profile, and nothing about what you have
+browsed — it is a plain download of the same file everyone else gets. It is
+still an outbound request you did not ask for, which is why it is named here
+and why **Settings → Content blocking → Keep filter lists up to date** turns it
+off. With it off, Umbra blocks using whatever was compiled into the build you
+installed, and nothing leaves the machine.
 - No unique install identifier is transmitted anywhere. One is generated (see
   *Fingerprinting* below), but it never leaves the machine — its entire job is
   to make sure two websites disagree about you.
@@ -29,15 +43,25 @@ What is stored on your machine, in the user data directory:
 | `filters.engine.bin` | The compiled blocklist | Refreshed from the filter list CDN |
 | `fp-secret` | 32 random bytes | Per profile; delete it to get a new identity |
 
-Private windows write none of it.
+Private windows write none of it. They use an in-memory partition, and on
+close the HTTP cache, code caches and auth cache are cleared explicitly —
+those outlive the partition otherwise.
+
+**Favicons** are fetched by the main process through the tab's own session and
+handed to the interface as `data:` URLs. Letting the interface load an icon URL
+directly would send that request from the browser chrome, which lives in the
+default session: it would skip the tab's partition, its blocking and its cookie
+policy, and in a private window it would leak the visit into the persistent
+profile.
 
 ## Blocking
 
 The desktop build runs EasyList, EasyPrivacy and the uBlock Origin filter sets
-through [Ghostery's engine](https://github.com/ghostery/adblocker). The compiled
-engine is fetched once and cached, so after the first run start-up needs no
-network. **If that first fetch fails, there is no blocking**, and the shield
-says so rather than showing a reassuring zero.
+through [Ghostery's engine](https://github.com/ghostery/adblocker). The engine
+is compiled at build time and shipped inside the application, so blocking is
+live from the first launch, offline, with no fetch first. If a build somehow
+ships without it and the fallback fetch also fails, **there is no blocking**,
+and the shield says so rather than showing a reassuring zero.
 
 On top of the filter lists, a short list of pure-telemetry hosts is cancelled
 outright in `desktop/src/main/privacy.js`.
@@ -91,11 +115,23 @@ consequences follow:
 3. Nothing is derived from anything a site can observe, so the perturbation
    cannot be modelled and subtracted.
 
+**The noise is a function of position, not a stream.** This is the detail that
+makes the difference between a defence and a delay. A running PRNG gives a
+different perturbation on each read, so a script that reads the same canvas a
+few hundred times can average the noise away and recover the true pixels
+exactly. Umbra derives each pixel's perturbation from `(seed, pixel index)`
+through a murmur3 finaliser, so every read of a given pixel returns the same
+value forever and there is nothing to average out.
+
+Both readback paths are covered: `HTMLCanvasElement` and `OffscreenCanvas`.
+The latter is worker-friendly and popular with fingerprinting scripts for
+exactly the reason it is easy to forget.
+
 What gets perturbed or replaced:
 
 | Surface | Standard | Strict |
 |---|---|---|
-| Canvas `toDataURL`/`getImageData` | ±1 LSB on ~6% of channels, from a copy | same |
+| Canvas + OffscreenCanvas readback | ±1 LSB on ~6% of pixels, from a copy | same |
 | WebGL vendor/renderer | generic strings | + trimmed extension list |
 | WebGL `readPixels` | ±1 on ~3% of bytes | same |
 | AudioContext | noise at ~1e-7 | same |
@@ -146,6 +182,12 @@ It shows no number rather than inventing one.
 **Umbra has not been audited.** It is one person's work with no external
 security review. The code is short and commented; if you are relying on it for
 something that matters, read it.
+
+The parts where a quiet mistake would be invisible in use — tracking-parameter
+stripping, the HTTPS upgrade and its fallback, omnibox resolution, and
+`umbra://` path containment — are covered by tests in `desktop/test/`, which
+run on every push. They caught two real bugs the first time they ran. That is
+a floor, not an audit.
 
 ## Reporting a problem
 

@@ -12,6 +12,9 @@ Thumbs.db
 # brand/generated/ IS committed: the README embeds it, chromium/scripts/apply.py
 # copies from it, and it keeps a fresh clone buildable before `npm ci` has run.
 
+# compiled at build time by desktop/scripts/fetch-filters.mjs
+desktop/filters/
+
 # generated from shared/ by tools/build-mobile-assets.mjs
 android/app/src/main/assets/
 ios/Resources/blocklist.json

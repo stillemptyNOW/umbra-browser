@@ -87,7 +87,7 @@ async function main() {
     contents.on('will-attach-webview', (event) => event.preventDefault());
   });
 
-  await initBlocker();
+  await initBlocker(settings);
 
   ipc.register(windows);
   buildMenu(windows);

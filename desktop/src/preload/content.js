@@ -34,14 +34,27 @@ function umbraDefense(cfg) {
   if (!cfg || cfg.defense === 'off') return;
 
   const strict = cfg.defense === 'strict';
+  const seed = (cfg.seed >>> 0) || 0x9e3779b9;
 
-  // xorshift32 — deterministic, seeded per site.
-  let s = (cfg.seed >>> 0) || 0x9e3779b9;
-  const rnd = () => {
-    s ^= s << 13; s >>>= 0;
-    s ^= s >>> 17;
-    s ^= s << 5; s >>>= 0;
-    return s / 4294967296;
+  /**
+   * Noise has to be a pure function of position, not a running stream.
+   *
+   * With a sequential PRNG, reading the same canvas twice yields different
+   * noise, and a site can average enough reads together to cancel it out and
+   * recover the true pixels. Keying on the index instead means every read of
+   * a given pixel returns the same perturbation forever, so there is nothing
+   * to average away.
+   *
+   * murmur3's finaliser, which avalanches well and is four instructions.
+   */
+  const noiseAt = (index) => {
+    let h = (seed ^ Math.imul(index, 0x9e3779b1)) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b) >>> 0;
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
   };
 
   const define = (obj, prop, getter) => {
@@ -67,56 +80,89 @@ function umbraDefense(cfg) {
   const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
 
   // -- canvas ---------------------------------------------------------------
-  // Perturb roughly one channel in sixteen by a single least-significant bit:
-  // invisible to a human, fatal to a hash.
+  // Perturb roughly one pixel in sixteen by a single least-significant bit per
+  // channel: invisible to a human, fatal to a hash, and identical on every
+  // read of the same pixel.
   const perturb = (data) => {
-    for (let i = 0; i < data.length; i += 4) {
-      if (rnd() < 0.0625) {
-        data[i] = clamp255(data[i] + (rnd() < 0.5 ? -1 : 1));
-        data[i + 1] = clamp255(data[i + 1] + (rnd() < 0.5 ? -1 : 1));
-        data[i + 2] = clamp255(data[i + 2] + (rnd() < 0.5 ? -1 : 1));
-      }
+    const pixels = data.length >> 2;
+    for (let p = 0; p < pixels; p++) {
+      const noise = noiseAt(p);
+      if ((noise & 15) !== 0) continue;
+      const i = p << 2;
+      data[i] = clamp255(data[i] + ((noise >>> 4) & 1 ? 1 : -1));
+      data[i + 1] = clamp255(data[i + 1] + ((noise >>> 5) & 1 ? 1 : -1));
+      data[i + 2] = clamp255(data[i + 2] + ((noise >>> 6) & 1 ? 1 : -1));
     }
     return data;
   };
 
+  // perturb() is applied when exporting a copy; re-applying it inside that
+  // copy's own getImageData would noise the data twice.
+  let exporting = false;
+
   /** Export from a noised copy so the visible canvas is never mutated. */
-  const noisyClone = (canvas) => {
+  const noisyClone = (canvas, Factory) => {
     try {
       const w = canvas.width | 0;
       const h = canvas.height | 0;
       if (!w || !h || w * h > 16777216) return canvas;
-      const copy = document.createElement('canvas');
-      copy.width = w;
-      copy.height = h;
+
+      const copy = Factory(w, h);
       const ctx = copy.getContext('2d');
-      ctx.drawImage(canvas, 0, 0);
-      const img = ctx.getImageData(0, 0, w, h);
-      perturb(img.data);
-      ctx.putImageData(img, 0, 0);
+      exporting = true;
+      try {
+        ctx.drawImage(canvas, 0, 0);
+        const img = ctx.getImageData(0, 0, w, h);
+        perturb(img.data);
+        ctx.putImageData(img, 0, 0);
+      } finally {
+        exporting = false;
+      }
       return copy;
     } catch {
       return canvas;
     }
   };
 
+  const htmlCanvas = (w, h) => {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+  };
+
   wrap(HTMLCanvasElement.prototype, 'toDataURL', function (orig, args) {
-    return orig.apply(noisyClone(this), args);
+    return orig.apply(noisyClone(this, htmlCanvas), args);
   });
   wrap(HTMLCanvasElement.prototype, 'toBlob', function (orig, args) {
-    return orig.apply(noisyClone(this), args);
+    return orig.apply(noisyClone(this, htmlCanvas), args);
   });
+
+  const readback = function (orig, args) {
+    const img = orig.apply(this, args);
+    if (exporting) return img;
+    try { perturb(img.data); } catch { /* detached buffer */ }
+    return img;
+  };
+
   if (window.CanvasRenderingContext2D) {
-    wrap(CanvasRenderingContext2D.prototype, 'getImageData', function (orig, args) {
-      const img = orig.apply(this, args);
-      try { perturb(img.data); } catch { /* detached buffer */ }
-      return img;
+    wrap(CanvasRenderingContext2D.prototype, 'getImageData', readback);
+  }
+
+  // OffscreenCanvas is a complete second readback path — worker-friendly and
+  // routinely used by fingerprinting scripts precisely because it is easy to
+  // forget. It gets the same treatment.
+  if (window.OffscreenCanvas) {
+    const offscreen = (w, h) => new OffscreenCanvas(w, h);
+    wrap(OffscreenCanvas.prototype, 'convertToBlob', function (orig, args) {
+      return orig.apply(noisyClone(this, offscreen), args);
+    });
+    wrap(OffscreenCanvas.prototype, 'transferToImageBitmap', function (orig, args) {
+      return orig.apply(noisyClone(this, offscreen), args);
     });
   }
-  if (window.OffscreenCanvas) {
-    wrap(OffscreenCanvas.prototype, 'convertToBlob', function (orig, args) {
-      return orig.apply(this, args);
-    });
+  if (window.OffscreenCanvasRenderingContext2D) {
+    wrap(OffscreenCanvasRenderingContext2D.prototype, 'getImageData', readback);
   }
 
   // -- webgl ----------------------------------------------------------------
@@ -138,7 +184,8 @@ function umbraDefense(cfg) {
       const buf = args[6];
       if (buf && buf.length) {
         for (let i = 0; i < buf.length; i += 4) {
-          if (rnd() < 0.03) buf[i] = clamp255(buf[i] + (rnd() < 0.5 ? -1 : 1));
+          const noise = noiseAt(i);
+          if ((noise & 31) === 0) buf[i] = clamp255(buf[i] + ((noise >>> 5) & 1 ? 1 : -1));
         }
       }
       return out;
@@ -153,10 +200,14 @@ function umbraDefense(cfg) {
   // -- audio ----------------------------------------------------------------
   const jitterFloats = (arr, scale) => {
     for (let i = 0; i < arr.length; i++) {
-      if (rnd() < 0.02) arr[i] += (rnd() - 0.5) * scale;
+      const noise = noiseAt(i);
+      if ((noise & 63) !== 0) continue;
+      // Map the top bits to a signed fraction of `scale`.
+      arr[i] += ((noise >>> 8) / 0xffffff - 0.5) * scale;
     }
     return arr;
   };
+
   if (window.AnalyserNode) {
     wrap(AnalyserNode.prototype, 'getFloatFrequencyData', function (orig, args) {
       orig.apply(this, args);
@@ -167,10 +218,19 @@ function umbraDefense(cfg) {
       jitterFloats(args[0], 0.0002);
     });
   }
+
   if (window.AudioBuffer) {
+    // getChannelData hands back the buffer's own storage, so a second call
+    // would perturb data that is already perturbed and the error would
+    // accumulate. Each array is touched exactly once.
+    const jittered = new WeakSet();
     wrap(AudioBuffer.prototype, 'getChannelData', function (orig, args) {
       const data = orig.apply(this, args);
-      return jitterFloats(data, 0.0000001);
+      if (!jittered.has(data)) {
+        jittered.add(data);
+        jitterFloats(data, 0.0000001);
+      }
+      return data;
     });
   }
 

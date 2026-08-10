@@ -14,18 +14,31 @@
 
   var secret = '__UMBRA_SECRET__';
   var host = location.hostname || 'local';
-  var seed = 0;
+
+  /* FNV-1a over secret|host, then murmur3's finaliser. Not an HMAC — the
+     desktop build derives its seed with one in the main process, but a
+     document-start script has no synchronous crypto and the value must exist
+     before the first page script runs. A keyed avalanche hash is what fits;
+     the secret never leaves the device, so preimage resistance is not what is
+     being relied on. */
+  var seed = 0x811c9dc5;
   var material = secret + '|' + host;
   for (var i = 0; i < material.length; i++) {
-    seed = ((seed << 5) - seed + material.charCodeAt(i)) | 0;
+    seed ^= material.charCodeAt(i);
+    seed = Math.imul(seed, 0x01000193) >>> 0;
   }
-  var s = (seed >>> 0) || 0x9e3779b9;
 
-  function rnd() {
-    s ^= s << 13; s >>>= 0;
-    s ^= s >>> 17;
-    s ^= s << 5; s >>>= 0;
-    return s / 4294967296;
+  /* Noise keyed on position, never a running stream: reading the same pixel
+     twice must give the same perturbation, or a site can average many reads
+     together and recover the original. */
+  function noiseAt(index) {
+    var h = (seed ^ Math.imul(index, 0x9e3779b1)) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b) >>> 0;
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
   }
 
   function define(obj, prop, getter) {
@@ -51,46 +64,78 @@
   function clamp(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
 
   function perturb(data) {
-    for (var i = 0; i < data.length; i += 4) {
-      if (rnd() < 0.0625) {
-        data[i] = clamp(data[i] + (rnd() < 0.5 ? -1 : 1));
-        data[i + 1] = clamp(data[i + 1] + (rnd() < 0.5 ? -1 : 1));
-        data[i + 2] = clamp(data[i + 2] + (rnd() < 0.5 ? -1 : 1));
-      }
+    var pixels = data.length >> 2;
+    for (var p = 0; p < pixels; p++) {
+      var noise = noiseAt(p);
+      if ((noise & 15) !== 0) continue;
+      var i = p << 2;
+      data[i] = clamp(data[i] + ((noise >>> 4) & 1 ? 1 : -1));
+      data[i + 1] = clamp(data[i + 1] + ((noise >>> 5) & 1 ? 1 : -1));
+      data[i + 2] = clamp(data[i + 2] + ((noise >>> 6) & 1 ? 1 : -1));
     }
     return data;
   }
 
+  var exporting = false;
+
   /* Export from a noised copy so the visible canvas is never mutated. */
-  function noisyClone(canvas) {
+  function noisyClone(canvas, factory) {
     try {
       var w = canvas.width | 0, h = canvas.height | 0;
       if (!w || !h || w * h > 16777216) return canvas;
-      var copy = document.createElement('canvas');
-      copy.width = w; copy.height = h;
+      var copy = factory(w, h);
       var ctx = copy.getContext('2d');
-      ctx.drawImage(canvas, 0, 0);
-      var img = ctx.getImageData(0, 0, w, h);
-      perturb(img.data);
-      ctx.putImageData(img, 0, 0);
+      exporting = true;
+      try {
+        ctx.drawImage(canvas, 0, 0);
+        var img = ctx.getImageData(0, 0, w, h);
+        perturb(img.data);
+        ctx.putImageData(img, 0, 0);
+      } finally {
+        exporting = false;
+      }
       return copy;
     } catch (e) {
       return canvas;
     }
   }
 
+  function htmlCanvas(w, h) {
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+
+  function readback(orig, args) {
+    var img = orig.apply(this, args);
+    if (exporting) return img;
+    try { perturb(img.data); } catch (e) { /* detached */ }
+    return img;
+  }
+
   wrap(HTMLCanvasElement.prototype, 'toDataURL', function (orig, args) {
-    return orig.apply(noisyClone(this), args);
+    return orig.apply(noisyClone(this, htmlCanvas), args);
   });
   wrap(HTMLCanvasElement.prototype, 'toBlob', function (orig, args) {
-    return orig.apply(noisyClone(this), args);
+    return orig.apply(noisyClone(this, htmlCanvas), args);
   });
   if (window.CanvasRenderingContext2D) {
-    wrap(CanvasRenderingContext2D.prototype, 'getImageData', function (orig, args) {
-      var img = orig.apply(this, args);
-      try { perturb(img.data); } catch (e) { /* detached */ }
-      return img;
+    wrap(CanvasRenderingContext2D.prototype, 'getImageData', readback);
+  }
+
+  /* OffscreenCanvas is a second, worker-friendly readback path, and a popular
+     one with fingerprinting scripts for exactly that reason. */
+  if (window.OffscreenCanvas) {
+    var offscreen = function (w, h) { return new OffscreenCanvas(w, h); };
+    wrap(OffscreenCanvas.prototype, 'convertToBlob', function (orig, args) {
+      return orig.apply(noisyClone(this, offscreen), args);
     });
+    wrap(OffscreenCanvas.prototype, 'transferToImageBitmap', function (orig, args) {
+      return orig.apply(noisyClone(this, offscreen), args);
+    });
+  }
+  if (window.OffscreenCanvasRenderingContext2D) {
+    wrap(OffscreenCanvasRenderingContext2D.prototype, 'getImageData', readback);
   }
 
   var GL_SPOOF = { 37445: 'Qualcomm', 37446: 'Adreno (TM) 730' };
@@ -102,17 +147,36 @@
     });
   });
 
+  function jitterFloats(arr, scale) {
+    for (var i = 0; i < arr.length; i++) {
+      var noise = noiseAt(i);
+      if ((noise & 63) !== 0) continue;
+      arr[i] += ((noise >>> 8) / 0xffffff - 0.5) * scale;
+    }
+    return arr;
+  }
+
   if (window.AnalyserNode) {
     wrap(AnalyserNode.prototype, 'getFloatFrequencyData', function (orig, args) {
       orig.apply(this, args);
-      var a = args[0];
-      for (var i = 0; i < a.length; i++) if (rnd() < 0.02) a[i] += (rnd() - 0.5) * 0.0002;
+      jitterFloats(args[0], 0.0002);
+    });
+    wrap(AnalyserNode.prototype, 'getFloatTimeDomainData', function (orig, args) {
+      orig.apply(this, args);
+      jitterFloats(args[0], 0.0002);
     });
   }
+
   if (window.AudioBuffer) {
+    /* getChannelData returns the buffer's own storage, so perturbing on every
+       call would compound the error. Touch each array once. */
+    var jittered = new WeakSet();
     wrap(AudioBuffer.prototype, 'getChannelData', function (orig, args) {
       var d = orig.apply(this, args);
-      for (var i = 0; i < d.length; i++) if (rnd() < 0.02) d[i] += (rnd() - 0.5) * 1e-7;
+      if (!jittered.has(d)) {
+        jittered.add(d);
+        jitterFloats(d, 1e-7);
+      }
       return d;
     });
   }

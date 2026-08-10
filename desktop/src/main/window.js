@@ -24,6 +24,10 @@ const TABSTRIP_H = 40;
 const TOOLBAR_H = 48;
 const FINDBAR_H = 44;
 
+/** A favicon larger than this is not a favicon. */
+const MAX_FAVICON_BYTES = 256 * 1024;
+const MAX_FAVICON_CACHE = 256;
+
 const WEBRTC_POLICIES = {
   default: 'default',
   'public-only': 'default_public_interface_only',
@@ -58,6 +62,7 @@ class BrowserWindowController {
     this.chromeExpanded = false;
     this.fullScreen = false;
     this.downloads = [];
+    this.favicons = new Map();
 
     const saved = settings.get('windowState');
     const bounds = this.#sanitiseBounds(saved);
@@ -85,8 +90,12 @@ class BrowserWindowController {
         preload: CHROME_PRELOAD,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        // The chrome preload only needs ipcRenderer and contextBridge, both of
+        // which a sandboxed preload can reach — so there is no reason for the
+        // UI renderer to run with more privilege than a web page.
+        sandbox: true,
         spellcheck: false,
+        webviewTag: false,
       },
     });
     this.chrome.setBackgroundColor('#00000000');
@@ -209,9 +218,14 @@ class BrowserWindowController {
       windows.delete(this);
       this.tabs.destroyAll();
       if (this.isPrivate) {
-        // In-memory partition, but clear explicitly so nothing lingers in caches.
+        // The partition is in-memory, but the HTTP cache and any code caches
+        // outlive it unless they are cleared explicitly.
         this.session.clearStorageData().catch(() => {});
+        this.session.clearCache().catch(() => {});
+        this.session.clearCodeCaches({}).catch(() => {});
+        this.session.clearAuthCache().catch(() => {});
       }
+      this.favicons.clear();
     });
   }
 
@@ -255,6 +269,49 @@ class BrowserWindowController {
 
   searchFor(text) {
     return resolveInput(text, settings.searchTemplate());
+  }
+
+  /**
+   * Turn a page's favicon URL into a data URL, fetched through the tab's own
+   * session.
+   *
+   * Handing the raw URL to the chrome UI and letting <img> load it would send
+   * the request from the UI renderer, which lives in the default session: it
+   * would skip the tab's partition, skip the blocker, skip the cookie policy,
+   * and in a private window it would leak the visit into the persistent
+   * profile. Fetching here keeps every favicon request inside the same
+   * boundary as the page that asked for it.
+   */
+  async resolveFavicon(url) {
+    if (!url) return null;
+    if (url.startsWith('data:')) return url.length <= MAX_FAVICON_BYTES ? url : null;
+    if (!/^https?:/i.test(url)) return null;
+
+    if (this.favicons.has(url)) return this.favicons.get(url);
+
+    let result = null;
+    try {
+      const response = await this.session.fetch(url, {
+        credentials: 'omit',
+        cache: 'force-cache',
+      });
+      const type = (response.headers.get('content-type') || '').split(';')[0].trim();
+      if (response.ok && type.startsWith('image/')) {
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.length && bytes.length <= MAX_FAVICON_BYTES) {
+          result = `data:${type};base64,${bytes.toString('base64')}`;
+        }
+      }
+    } catch {
+      // Blocked, offline, or the site simply has no favicon. The UI falls
+      // back to its globe glyph.
+    }
+
+    if (this.favicons.size >= MAX_FAVICON_CACHE) {
+      this.favicons.delete(this.favicons.keys().next().value);
+    }
+    this.favicons.set(url, result);
+    return result;
   }
 
   /** Private windows and "don't remember history" both mean: write nothing. */

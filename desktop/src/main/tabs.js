@@ -6,7 +6,7 @@
  */
 const path = require('node:path');
 const { WebContentsView, Menu, clipboard, shell } = require('electron');
-const { allowInsecure, wasUpgraded } = require('./privacy');
+const { allowInsecure, wasUpgraded } = require('./rewrite');
 const { resetTabStats, getStats } = require('./adblock');
 
 const CONTENT_PRELOAD = path.join(__dirname, '..', 'preload', 'content.js');
@@ -27,6 +27,12 @@ const UPGRADE_FAILURES = new Set([
 
 /** Errors Chromium reports that are not actually a failed page load. */
 const IGNORED_FAILURES = new Set([-3 /* ABORTED */, 0]);
+
+/** Schemes a tab may navigate to itself. */
+const NAVIGABLE_SCHEMES = /^(https?|umbra|file|about|data|blob|view-source):/i;
+
+/** Schemes worth handing to the operating system. Nothing else qualifies. */
+const EXTERNAL_SCHEMES = /^(mailto|tel|sms|webcal|maps|geo):/i;
 
 let nextId = 1;
 
@@ -81,8 +87,14 @@ class Tab {
     });
 
     wc.on('page-favicon-updated', (_e, icons) => {
-      this.favicon = icons && icons.length ? icons[icons.length - 1] : null;
-      push();
+      const source = icons && icons.length ? icons[icons.length - 1] : null;
+      // Resolved to a data URL through this tab's own session — see
+      // BrowserWindowController.resolveFavicon for why that matters.
+      this.host.resolveFavicon(source).then((favicon) => {
+        if (this.wc.isDestroyed()) return;
+        this.favicon = favicon;
+        push();
+      });
     });
 
     wc.on('did-start-loading', () => {
@@ -158,11 +170,18 @@ class Tab {
 
     wc.on('context-menu', (_e, params) => this.#contextMenu(params));
 
-    // External protocols (mailto:, tel:, …) go to the OS, never to a tab.
     wc.on('will-navigate', (event, url) => {
-      if (/^(https?|umbra|file|about|data|blob|view-source):/i.test(url)) return;
+      if (NAVIGABLE_SCHEMES.test(url)) return;
       event.preventDefault();
-      shell.openExternal(url).catch(() => {});
+
+      // Handing an arbitrary scheme to the OS is how a page gets to launch
+      // whatever the user happens to have registered for it. Only these few
+      // are worth the risk, and everything else is dropped in silence.
+      if (EXTERNAL_SCHEMES.test(url)) {
+        shell.openExternal(url).catch(() => {});
+      } else {
+        console.warn('[umbra] refused navigation to an unhandled scheme:', url.slice(0, 64));
+      }
     });
   }
 

@@ -292,11 +292,16 @@ function buildShieldPanel(panel) {
   stat.appendChild(cap);
   panel.appendChild(stat);
 
+  const note = el('div', 'row');
   if (!state.stats.ready) {
-    const warn = el('div', 'row');
-    warn.appendChild(el('div', 'label', 'Filter lists unavailable — restart with a connection to enable blocking.'));
-    warn.style.color = 'var(--warn)';
-    panel.appendChild(warn);
+    note.appendChild(el('div', 'label',
+      state.stats.error || 'Filter lists unavailable — nothing is being blocked.'));
+    note.style.color = 'var(--warn)';
+    panel.appendChild(note);
+  } else if (state.stats.source === 'bundled') {
+    note.appendChild(el('div', 'label', 'Using the filters compiled into this build.'));
+    note.style.color = 'var(--faint)';
+    panel.appendChild(note);
   }
 
   separator(panel);

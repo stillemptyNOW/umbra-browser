@@ -28,16 +28,43 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-/** Resolve `child` under `root`, refusing anything that escapes it. */
-function safeJoin(root, child) {
-  const target = path.resolve(root, '.' + path.posix.normalize('/' + (child || '')));
-  return target.startsWith(path.resolve(root)) ? target : null;
+const { safeJoin } = require('./paths');
+
+/**
+ * Sent on every umbra:// response, not just relied on from a <meta> tag in
+ * each page. A page that forgets its meta tag is then still covered, and the
+ * header applies to responses that are not HTML at all.
+ *
+ * 'unsafe-inline' for styles only: the pages carry <style> blocks. Scripts are
+ * 'self', which is why every internal page keeps its logic in its own file.
+ */
+const CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src umbra: data:",
+  "font-src 'self'",
+  "connect-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+].join('; ');
+
+function headers(contentType) {
+  return {
+    'content-type': contentType,
+    'content-security-policy': CSP,
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+  };
 }
 
 function notFound() {
   return new Response('<h1>Page not found</h1>', {
     status: 404,
-    headers: { 'content-type': 'text/html; charset=utf-8' },
+    headers: headers('text/html; charset=utf-8'),
   });
 }
 
@@ -69,10 +96,7 @@ async function serveInternal(request) {
 
   return new Response(response.body, {
     status: 200,
-    headers: {
-      'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-      'cache-control': 'no-store',
-    },
+    headers: headers(MIME[path.extname(file).toLowerCase()] || 'application/octet-stream'),
   });
 }
 

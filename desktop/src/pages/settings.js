@@ -15,6 +15,8 @@ function schema(engines) {
         ['blockAds', 'Block ads', 'EasyList plus the uBlock Origin filter set.'],
         ['blockTrackers', 'Block trackers', 'EasyPrivacy. Stops third parties following you between sites.'],
         ['blockCosmetics', 'Hide blocked elements', 'Removes the empty space an ad left behind.'],
+        ['updateFilters', 'Keep filter lists up to date',
+          'Filters are compiled into Umbra, so blocking works offline from the first launch. This tops them up every few days — the only request Umbra makes on its own.'],
       ],
     },
     {
