@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Umbra">
+  <title>Umbra</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16121F"/>
+      <stop offset="0.55" stop-color="#0C0A14"/>
+      <stop offset="1" stop-color="#05040A"/>
+    </linearGradient>
+
+    <!-- Mapped onto the crescent's bounding box, not the canvas, so the full
+         cyan -> violet sweep is actually visible inside the sliver. -->
+    <linearGradient id="crescentFill" gradientUnits="userSpaceOnUse"
+                    x1="118" y1="398" x2="332" y2="128">
+      <stop offset="0" stop-color="#2FE3EA"/>
+      <stop offset="0.42" stop-color="#5BA8FF"/>
+      <stop offset="0.75" stop-color="#7C6BFF"/>
+      <stop offset="1" stop-color="#9B5CFF"/>
+    </linearGradient>
+
+    <radialGradient id="corona" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.52" stop-color="#7B5CFF" stop-opacity="0"/>
+      <stop offset="0.70" stop-color="#7B5CFF" stop-opacity="0.30"/>
+      <stop offset="0.86" stop-color="#3BE0E8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#3BE0E8" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="rim" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#3BE0E8" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#8B5CFF" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#8B5CFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- The crescent: a lit disc with the umbra disc punched out of it. -->
+    <mask id="eclipse">
+      <rect width="512" height="512" fill="black"/>
+      <circle cx="256" cy="256" r="150" fill="white"/>
+      <circle cx="298" cy="214" r="150" fill="black"/>
+    </mask>
+
+    <filter id="soften" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+
+  <!-- corona -->
+  <circle cx="256" cy="256" r="256" fill="url(#corona)"/>
+
+  <!-- distant stars -->
+  <g fill="#CFC7FF">
+    <circle cx="104" cy="126" r="2.6" opacity="0.55"/>
+    <circle cx="418" cy="150" r="2" opacity="0.4"/>
+    <circle cx="392" cy="392" r="2.4" opacity="0.35"/>
+    <circle cx="128" cy="372" r="1.8" opacity="0.45"/>
+    <circle cx="72" cy="256" r="1.6" opacity="0.3"/>
+  </g>
+
+  <!-- the umbra itself -->
+  <circle cx="256" cy="256" r="152" fill="#07060C"/>
+  <circle cx="256" cy="256" r="152" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+
+  <!-- glow behind the crescent -->
+  <g mask="url(#eclipse)" filter="url(#soften)" opacity="0.85">
+    <rect width="512" height="512" fill="url(#crescentFill)"/>
+  </g>
+
+  <!-- the crescent -->
+  <g mask="url(#eclipse)">
+    <rect width="512" height="512" fill="url(#crescentFill)"/>
+  </g>
+</svg>

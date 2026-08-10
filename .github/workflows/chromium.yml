@@ -1,0 +1,79 @@
+name: chromium fork
+
+# Builds Chromium itself, de-Googled and branded as Umbra.
+#
+# This will NOT complete on a standard GitHub-hosted runner. A cold Chromium
+# build takes 4–8 hours on sixteen cores; hosted runners give four cores and
+# cut the job off at six. Run it on a self-hosted runner, or on a large runner
+# with a warm sccache.
+#
+# It is manual-only and deliberately not part of the release pipeline. The
+# published binaries are the Electron builds — see chromium/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Target platform
+        required: true
+        default: linux
+        type: choice
+        options: [linux, windows, macos, android]
+      runner:
+        description: Runner label (a self-hosted runner is strongly advised)
+        required: true
+        default: ubuntu-latest
+
+jobs:
+  build:
+    name: chromium (${{ inputs.platform }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 1440
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build brand assets (apply.py needs the icons)
+        run: npm ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check there is room for this
+        run: |
+          echo "Free disk:"
+          df -h .
+          available=$(df -Pk . | awk 'NR==2 {print int($4/1024/1024)}')
+          if [ "$available" -lt 120 ]; then
+            echo "::error::Chromium needs ~120 GB free; this runner has ${available} GB."
+            exit 1
+          fi
+
+      - name: Fetch Chromium
+        working-directory: chromium
+        run: ./scripts/fetch.sh
+
+      - name: Apply Umbra branding and substitutions
+        working-directory: chromium
+        run: python3 scripts/apply.py --src src
+
+      - name: Build
+        working-directory: chromium
+        run: ./scripts/build.sh ${{ inputs.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chromium-${{ inputs.platform }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            chromium/src/out/Umbra/chrome
+            chromium/src/out/Umbra/chrome.exe
+            chromium/src/out/Umbra/*.pak
+            chromium/src/out/Umbra/*.bin
+            chromium/src/out/Umbra/apks/*.apk

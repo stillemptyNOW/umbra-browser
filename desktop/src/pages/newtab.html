@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src umbra: data:;">
+  <title>New tab</title>
+  <link rel="stylesheet" href="page.css">
+  <style>
+    body { visibility: hidden; display: grid; place-items: center; }
+    .hero { width: min(620px, 88vw); text-align: center; margin-top: -8vh; }
+    .mark { width: 92px; height: 92px; margin: 0 auto 18px; display: block; opacity: 0.95; }
+    .name { font-size: 20px; font-weight: 600; letter-spacing: 0.14em; text-transform: lowercase; color: var(--muted); margin-bottom: 26px; }
+
+    form { display: flex; align-items: center; gap: 10px;
+           height: 50px; padding: 0 8px 0 18px;
+           border-radius: 999px; background: var(--raised);
+           border: 1px solid var(--border);
+           transition: border-color 140ms ease, box-shadow 140ms ease; }
+    form:focus-within { border-color: var(--accent);
+                        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent); }
+    form input { flex: 1; height: 100%; border: 0; background: transparent; color: var(--text);
+                 font: inherit; font-size: 15px; outline: 0; }
+    form input::placeholder { color: var(--faint); }
+    form button { width: 36px; height: 36px; border: 0; border-radius: 50%;
+                  background: var(--accent); color: #fff; cursor: pointer;
+                  display: grid; place-items: center; }
+    form button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
+                      stroke-linecap: round; stroke-linejoin: round; }
+
+    .shield-line { margin-top: 22px; color: var(--faint); font-size: 13px; }
+    .shield-line b { color: var(--accent2); font-variant-numeric: tabular-nums; }
+
+    .links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 34px; }
+    .links a { display: flex; align-items: center; gap: 8px;
+               padding: 7px 13px; border-radius: 999px; font-size: 12.5px;
+               color: var(--muted); background: var(--raised); border: 1px solid var(--border); }
+    .links a:hover { color: var(--text); background: var(--hover); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main class="hero">
+    <img class="mark" src="umbra://assets/mark.png" alt="">
+    <div class="name">umbra</div>
+
+    <form id="search" autocomplete="off">
+      <input id="q" type="text" placeholder="Search the web privately" autofocus spellcheck="false" aria-label="Search">
+      <button type="submit" aria-label="Search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.3-4.3"/></svg>
+      </button>
+    </form>
+
+    <p class="shield-line" id="shieldLine"></p>
+    <nav class="links" id="links"></nav>
+  </main>
+
+  <script src="page.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

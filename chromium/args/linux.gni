@@ -1,0 +1,15 @@
+import("//umbra/common.gni")
+
+target_os = "linux"
+target_cpu = "x64"
+
+use_sysroot = true
+use_custom_libcxx = true
+is_cfi = false
+use_thin_lto = true
+
+# System integration people actually expect on a Linux desktop.
+use_gio = true
+use_pulseaudio = true
+rtc_use_pipewire = true
+use_system_libjpeg = false

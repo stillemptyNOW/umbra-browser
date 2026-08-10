@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Named "ink" rather than "void": aapt rejects Java keywords as
+         resource names. Same colour as --void elsewhere in the palette. -->
+    <color name="ink">#FF04030A</color>
+    <color name="surface">#FF0A0812</color>
+    <color name="raised">#FF14101F</color>
+    <color name="hover">#FF1D1730</color>
+    <color name="border">#FF2A2140</color>
+    <color name="text">#FFEDEAF7</color>
+    <color name="muted">#FF9A93B5</color>
+    <color name="faint">#FF655D80</color>
+    <color name="accent">#FF7726FA</color>
+    <color name="accent_soft">#FFA78BFA</color>
+    <color name="success">#FF3DD68C</color>
+    <color name="warn">#FFF2B155</color>
+    <color name="danger">#FFF2555A</color>
+    <color name="ic_launcher_background">#FF05040A</color>
+</resources>

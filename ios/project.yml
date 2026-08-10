@@ -1,0 +1,45 @@
+# XcodeGen project definition.
+#
+# The .xcodeproj is generated rather than committed: a checked-in project file
+# is a merge-conflict magnet and hides what the build actually does.
+#
+#   brew install xcodegen && xcodegen generate
+
+name: Umbra
+
+options:
+  bundleIdPrefix: io.umbra
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  Umbra:
+    type: application
+    platform: iOS
+    sources:
+      - path: Umbra
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: Umbra
+        PRODUCT_BUNDLE_IDENTIFIER: io.umbra.browser
+        INFOPLIST_FILE: Umbra/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Umbra publishes an unsigned .ipa for sideloading. Signing for the App
+        # Store needs a paid Apple Developer account, which the project does not
+        # have; see docs/BUILD.md.
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGN_ENTITLEMENTS: ""

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src umbra: data:;">
+  <title>About Umbra</title>
+  <link rel="stylesheet" href="page.css">
+  <style>
+    body { visibility: hidden; }
+    .hero { display: flex; align-items: center; gap: 20px; margin-bottom: 8px; }
+    .hero img { width: 76px; height: 76px; }
+    .hero h1 { margin: 0; font-size: 30px; }
+    .hero .tag { color: var(--muted); }
+    dl { display: grid; grid-template-columns: 150px 1fr; gap: 0; margin: 0; }
+    dt, dd { padding: 11px 18px; border-bottom: 1px solid var(--border); margin: 0; }
+    dt { color: var(--faint); }
+    dd { font-family: var(--mono); font-size: 12.5px; }
+    dl > :nth-last-child(1), dl > :nth-last-child(2) { border-bottom: 0; }
+    ul.credits { list-style: none; padding: 6px 18px 14px; margin: 0; }
+    ul.credits li { padding: 5px 0; color: var(--muted); font-size: 13px; }
+    ul.credits b { color: var(--text); font-weight: 550; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <img src="umbra://assets/mark.png" alt="">
+      <div>
+        <h1>Umbra</h1>
+        <div class="tag">Your browsing, in shadow.</div>
+      </div>
+    </div>
+
+    <p class="lead">
+      A Chromium-based browser that blocks ads and trackers, resists fingerprinting,
+      encrypts its DNS lookups and reports nothing to anyone. There is no account,
+      no sync server and no telemetry endpoint — not disabled by default, absent.
+    </p>
+
+    <h2>Version</h2>
+    <div class="card"><dl id="versions"></dl></div>
+
+    <h2>Built on the work of others</h2>
+    <div class="card">
+      <ul class="credits">
+        <li><b>Chromium</b> — the engine, by The Chromium Authors (BSD-3-Clause)</li>
+        <li><b>Electron</b> — the application shell (MIT)</li>
+        <li><b>Ghostery adblocker</b> — the filter engine (MPL-2.0)</li>
+        <li><b>EasyList &amp; EasyPrivacy</b> — filter lists (GPL-3.0 / CC BY-SA 3.0)</li>
+        <li><b>uBlock Origin filters</b> — filter lists (GPL-3.0)</li>
+        <li><b>Catppuccin, Nord, Rosé Pine, Gruvbox, Solarized</b> — colour palettes (MIT)</li>
+        <li><b>Tokyo Night</b> — colour palette (Apache-2.0)</li>
+        <li><b>tldts</b> — public suffix parsing (MIT)</li>
+      </ul>
+    </div>
+
+    <h2>Licence</h2>
+    <div class="card">
+      <div class="row">
+        <div class="txt">
+          <b>MIT</b>
+          <span>Umbra's own source is MIT licensed. Bundled components keep their own terms.</span>
+        </div>
+        <button class="action" id="source">View source</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="page.js"></script>
+  <script src="about.js"></script>
+</body>
+</html>

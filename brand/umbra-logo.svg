@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" width="760" height="180" role="img" aria-label="Umbra">
+  <title>Umbra</title>
+  <defs>
+    <linearGradient id="cf" gradientUnits="userSpaceOnUse"
+                    x1="41" y1="140" x2="117" y2="45">
+      <stop offset="0" stop-color="#2FE3EA"/>
+      <stop offset="0.42" stop-color="#5BA8FF"/>
+      <stop offset="0.75" stop-color="#7C6BFF"/>
+      <stop offset="1" stop-color="#9B5CFF"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F2EFFF"/>
+      <stop offset="1" stop-color="#B9AEFF"/>
+    </linearGradient>
+    <radialGradient id="co" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.52" stop-color="#7B5CFF" stop-opacity="0"/>
+      <stop offset="0.74" stop-color="#7B5CFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#3BE0E8" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="ec">
+      <rect x="0" y="0" width="180" height="180" fill="black"/>
+      <circle cx="90" cy="90" r="53" fill="white"/>
+      <circle cx="105" cy="75" r="53" fill="black"/>
+    </mask>
+  </defs>
+
+  <circle cx="90" cy="90" r="90" fill="url(#co)"/>
+  <circle cx="90" cy="90" r="53.5" fill="#07060C"/>
+  <g mask="url(#ec)">
+    <rect x="0" y="0" width="180" height="180" fill="url(#cf)"/>
+  </g>
+
+  <text x="208" y="120" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif"
+        font-size="92" font-weight="600" letter-spacing="-2" fill="url(#word)">umbra</text>
+</svg>

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src umbra: data: https: http:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self';">
+  <title>Umbra</title>
+  <link rel="stylesheet" href="chrome.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <defs>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+      <symbol id="i-forward" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+      <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-1.6 5.6M20 5v6h-6"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 017-2.6"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.3-4.3"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4a13 13 0 010 16 13 13 0 010-16"/></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7L8 10z"/><path d="M16 9a4 4 0 010 6"/></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7L8 10z"/><path d="M16 10l4 4M20 10l-4 4"/></symbol>
+      <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8"/></symbol>
+      <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></symbol>
+      <symbol id="i-restore" viewBox="0 0 12 12"><rect x="2.5" y="4.5" width="5.5" height="5.5"/><path d="M4.5 4.5V2.5H10v5.5H8"/></symbol>
+      <symbol id="i-xwin" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4 10-10"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar" id="topbar">
+    <div class="tabstrip" id="tabstrip">
+      <div class="mac-inset" id="macInset"></div>
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <button class="icon-btn newtab" id="newtab" title="New tab (Ctrl+T)" aria-label="New tab">
+        <svg><use href="#i-plus"/></svg>
+      </button>
+      <div class="drag-fill"></div>
+      <div class="private-badge" id="privateBadge" hidden>Private</div>
+      <div class="wincontrols" id="wincontrols">
+        <button class="wc" data-wc="minimize" aria-label="Minimize"><svg><use href="#i-min"/></svg></button>
+        <button class="wc" data-wc="maximize" aria-label="Maximize"><svg><use href="#i-max"/></svg></button>
+        <button class="wc danger" data-wc="close" aria-label="Close"><svg><use href="#i-xwin"/></svg></button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="icon-btn" id="back" title="Back" aria-label="Back"><svg><use href="#i-back"/></svg></button>
+      <button class="icon-btn" id="forward" title="Forward" aria-label="Forward"><svg><use href="#i-forward"/></svg></button>
+      <button class="icon-btn" id="reload" title="Reload" aria-label="Reload"><svg><use href="#i-reload"/></svg></button>
+
+      <div class="omnibox" id="omnibox">
+        <span class="lock" id="lock" title="Connection"><svg><use href="#i-search"/></svg></span>
+        <input id="omni" type="text" spellcheck="false" autocomplete="off"
+               placeholder="Search with DuckDuckGo or enter an address" aria-label="Address and search bar">
+        <button class="shield" id="shield" title="Privacy for this site">
+          <svg><use href="#i-shield"/></svg>
+          <span class="count" id="blockCount">0</span>
+        </button>
+      </div>
+
+      <button class="icon-btn" id="menuBtn" title="Menu" aria-label="Menu"><svg><use href="#i-menu"/></svg></button>
+    </div>
+
+    <div class="findbar" id="findbar" hidden>
+      <svg class="find-icon"><use href="#i-search"/></svg>
+      <input id="findInput" type="text" placeholder="Find in page" spellcheck="false" aria-label="Find in page">
+      <span class="find-count" id="findCount"></span>
+      <button class="icon-btn sm" id="findPrev" aria-label="Previous match"><svg><use href="#i-up"/></svg></button>
+      <button class="icon-btn sm" id="findNext" aria-label="Next match"><svg><use href="#i-down"/></svg></button>
+      <button class="icon-btn sm" id="findClose" aria-label="Close find bar"><svg><use href="#i-close"/></svg></button>
+    </div>
+  </header>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="panel" id="panel" role="dialog" hidden></div>
+    <div class="suggest" id="suggest" role="listbox" hidden></div>
+  </div>
+
+  <script src="chrome.js"></script>
+</body>
+</html>

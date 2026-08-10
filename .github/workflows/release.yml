@@ -1,0 +1,232 @@
+name: release
+
+# Builds every shipping artifact and attaches it to a GitHub release.
+#
+#   .exe  Windows installer + portable   (windows-latest)
+#   .dmg  macOS, Intel and Apple silicon (macos-14)
+#   .deb  Debian/Ubuntu + AppImage       (ubuntu-latest)
+#   .apk  Android                        (ubuntu-latest)
+#   .ipa  iOS, unsigned for sideloading  (macos-14)
+#
+# Nothing here is code-signed with a paid certificate. Windows and macOS will
+# warn on first launch; the release notes say so rather than hiding it.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish as (e.g. v0.1.0)"
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------- desktop
+  desktop:
+    name: desktop (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+            flag: --win
+          - os: macos-14
+            label: macos
+            flag: --mac
+          - os: ubuntu-latest
+            label: linux
+            flag: --linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build brand and shared assets
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Package
+        working-directory: desktop
+        env:
+          # No Apple Developer account, so do not go looking for a certificate.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.flag }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.label }}
+          if-no-files-found: error
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.deb
+            desktop/dist/*.AppImage
+            desktop/dist/*.tar.gz
+
+  # ---------------------------------------------------------------- android
+  android:
+    name: android (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build brand and shared assets
+        run: npm ci
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Assemble release APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+
+      - name: Name the artifact
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/*.apk "out/Umbra-${GITHUB_REF_NAME#v}-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          if-no-files-found: error
+          path: out/*.apk
+
+  # -------------------------------------------------------------------- ios
+  ios:
+    name: ios (.ipa, unsigned)
+    # macos-15 for Xcode 16: current XcodeGen emits project format 77, which
+    # Xcode 15 on macos-14 refuses to open.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build brand and shared assets
+        run: npm ci
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Archive
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            -project Umbra.xcodeproj \
+            -scheme Umbra \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/Umbra.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Package as an unsigned .ipa
+        working-directory: ios
+        run: |
+          # An .ipa is a zip with the .app inside a Payload directory. Without
+          # a signature it installs only through sideloading (AltStore,
+          # Sideloadly, or a free developer certificate in Xcode).
+          mkdir -p build/Payload
+          cp -R build/Umbra.xcarchive/Products/Applications/Umbra.app build/Payload/
+          cd build
+          zip -qry "Umbra-${GITHUB_REF_NAME#v}-ios-unsigned.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          if-no-files-found: error
+          path: ios/build/*.ipa
+
+  # ---------------------------------------------------------------- release
+  publish:
+    name: publish release
+    needs: [desktop, android, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten and checksum
+        run: |
+          mkdir -p release
+          find artifacts -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.deb' \
+               -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.apk' -o -name '*.ipa' \) \
+            -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Umbra ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: release/*
+          body: |
+            ## Umbra ${{ github.event.inputs.tag || github.ref_name }}
+
+            A private, Chromium-based browser. No telemetry, no account, no sync server.
+
+            | Platform | File |
+            |---|---|
+            | Windows | `Umbra-*-windows-x64.exe` (installer) or `-portable.exe` |
+            | macOS | `Umbra-*-macos-arm64.dmg` (Apple silicon) / `-x64.dmg` (Intel) |
+            | Linux | `Umbra-*-linux-x64.deb`, `.AppImage`, `.tar.gz` |
+            | Android | `Umbra-*-android.apk` |
+            | iOS | `Umbra-*-ios-unsigned.ipa` (sideload only) |
+
+            ### About the signatures
+
+            None of these are signed with a paid certificate, because the project
+            does not have one.
+
+            - **Windows** — SmartScreen will warn. "More info" → "Run anyway".
+            - **macOS** — Gatekeeper will refuse a double-click. Right-click →
+              Open, or `xattr -dr com.apple.quarantine /Applications/Umbra.app`.
+            - **Android** — signed with a throwaway key, so it installs, but it
+              cannot be upgraded in place from a differently-signed build.
+            - **iOS** — unsigned. It needs AltStore, Sideloadly, or your own free
+              developer certificate in Xcode. It will not install by download.
+
+            Verify what you downloaded against `SHA256SUMS.txt`.

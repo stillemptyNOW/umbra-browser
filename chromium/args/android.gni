@@ -1,0 +1,13 @@
+import("//umbra/common.gni")
+
+target_os = "android"
+target_cpu = "arm64"
+
+android_channel = "stable"
+is_java_debug = false
+disable_android_lint = true
+
+# Chromium for Android pulls Play Services by default. Umbra does not.
+enable_gvr_services = false
+enable_arcore = false
+enable_chrome_android_internal = false

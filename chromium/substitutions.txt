@@ -1,0 +1,36 @@
+# Source substitutions applied by scripts/apply.py.
+#
+# Format, tab- or pipe-separated:
+#   <path relative to src>  |  <exact text to find>  |  <replacement>
+#
+# Every line must match at least once or apply.py fails loudly. That is the
+# point: when Chromium moves a string, the build stops instead of quietly
+# shipping a browser that still talks to Google.
+#
+# These cover the endpoints that survive the GN args in chromium/args/. Most
+# de-Googling is done there; this file is the remainder.
+
+# --- prepopulated search engines --------------------------------------------
+# Ship one engine, and make it the one that does not build a profile.
+components/search_engines/template_url_prepopulate_data.cc | google, | duckduckgo,
+
+# --- variations / field trials ----------------------------------------------
+# The seed server decides which experiments a build takes part in. Point it at
+# a domain that resolves nowhere; the fetch fails and no experiment applies.
+components/variations/variations_switches.cc | https://clientservices.googleapis.com/chrome-variations/seed | https://disabled.invalid/seed
+components/variations/service/variations_service.cc | https://clientservices.googleapis.com/chrome-variations/seed | https://disabled.invalid/seed
+
+# --- component updater ------------------------------------------------------
+components/component_updater/configurator_impl.cc | https://update.googleapis.com/service/update2 | https://disabled.invalid/update2
+
+# --- network time -----------------------------------------------------------
+components/network_time/network_time_tracker.cc | http://clients2.google.com/time/1/current | https://disabled.invalid/time
+
+# --- connectivity checks ("are we behind a captive portal") -----------------
+components/captive_portal/core/captive_portal_detector.cc | http://www.gstatic.com/generate_204 | https://disabled.invalid/generate_204
+
+# --- domain reliability -----------------------------------------------------
+components/domain_reliability/uploader.cc | https://domainreliability.googleapis.com/v1/events | https://disabled.invalid/events
+
+# --- autofill server --------------------------------------------------------
+components/autofill/core/common/autofill_payments_features.cc | https://payments.google.com | https://disabled.invalid

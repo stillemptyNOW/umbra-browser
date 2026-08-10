@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing is backed up. Browsing data leaving the device in a cloud backup
+     would defeat the point of the application. -->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="file" />
+    <exclude domain="external" />
+</full-backup-content>

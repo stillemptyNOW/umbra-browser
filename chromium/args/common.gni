@@ -1,0 +1,60 @@
+# Shared GN args for the Umbra Chromium fork.
+#
+# Included by every platform file in this directory. These are the switches
+# that do most of the de-Googling; anything that cannot be turned off here is
+# handled by scripts/apply.py.
+
+# --- build shape -------------------------------------------------------------
+is_debug = false
+is_official_build = true
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+dcheck_always_on = false
+treat_warnings_as_errors = false
+enable_nacl = false
+
+# Profile-guided optimisation needs Google's profile downloads.
+chrome_pgo_phase = 0
+
+# --- no Google services ------------------------------------------------------
+# Empty keys are load-bearing: with these blank, sign-in, sync, translate and
+# the rest of the Google integrations have nothing to talk to.
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+use_official_google_api_keys = false
+
+safe_browsing_mode = 0
+enable_reporting = false
+enable_remoting = false
+enable_service_discovery = false
+enable_mdns = false
+enable_supervised_users = false
+enable_hangout_services_extension = false
+enable_iterator_debugging = false
+enable_click_to_call = false
+enable_screen_ai_service = false
+
+# Crash reporting is removed rather than merely disabled.
+enable_rust_crash = false
+
+# --- media -------------------------------------------------------------------
+# H.264/AAC are needed for the web to work; Widevine is not, and shipping it
+# would mean redistributing a Google binary blob. Video services that insist on
+# DRM will not play. That is the trade, made deliberately.
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+enable_widevine = false
+enable_platform_hevc = true
+enable_hevc_parser_and_hw_decoder = true
+
+# --- extensions --------------------------------------------------------------
+enable_extensions = true
+enable_plugins = true
+
+# --- branding ----------------------------------------------------------------
+# "Chromium" branding keeps the source tree's own artwork paths, which
+# scripts/apply.py then overwrites with Umbra's.
+is_chrome_branded = false
+use_unofficial_version_number = false

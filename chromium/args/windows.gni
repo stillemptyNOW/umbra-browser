@@ -1,0 +1,11 @@
+import("//umbra/common.gni")
+
+target_os = "win"
+target_cpu = "x64"
+
+is_clang = true
+use_thin_lto = true
+is_cfi = false
+
+# Windows builds need the Visual Studio toolchain; see scripts/fetch.sh for
+# the DEPOT_TOOLS_WIN_TOOLCHAIN note.

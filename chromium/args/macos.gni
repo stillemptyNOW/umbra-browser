@@ -1,0 +1,13 @@
+import("//umbra/common.gni")
+
+target_os = "mac"
+target_cpu = "arm64"
+
+mac_deployment_target = "11.0"
+mac_min_system_version = "11.0"
+
+use_thin_lto = true
+is_cfi = false
+
+# Unsigned by default. Signing needs an Apple Developer account; see
+# docs/BUILD.md for what changes when you have one.

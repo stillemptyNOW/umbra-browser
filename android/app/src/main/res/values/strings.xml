@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Umbra</string>
+    <string name="omnibox_hint">Search or enter address</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="reload">Reload</string>
+    <string name="tabs">Tabs</string>
+    <string name="menu">Menu</string>
+    <string name="new_tab">New tab</string>
+    <string name="close_tab">Close tab</string>
+    <string name="shield">Privacy</string>
+    <string name="blocked_here">%1$d blocked on this page</string>
+    <string name="blocked_total">%1$d blocked since Umbra started</string>
+    <string name="private_mode">Private mode</string>
+    <string name="clear_data">Clear browsing data</string>
+    <string name="cleared">Browsing data cleared</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="share">Share</string>
+    <string name="about">About Umbra</string>
+    <string name="tagline">Your browsing, in shadow.</string>
+</resources>

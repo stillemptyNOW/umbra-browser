@@ -1,0 +1,38 @@
+node_modules/
+__pycache__/
+*.pyc
+dist/
+out/
+release/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# brand/generated/ IS committed: the README embeds it, chromium/scripts/apply.py
+# copies from it, and it keeps a fresh clone buildable before `npm ci` has run.
+
+# generated from shared/ by tools/build-mobile-assets.mjs
+android/app/src/main/assets/
+ios/Resources/blocklist.json
+ios/Resources/farble.js
+
+# android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
+
+# ios
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/build/
+ios/DerivedData/
+*.ipa
+
+# chromium fork checkout (never commit; it is ~100 GB)
+chromium/src/
+chromium/depot_tools/
+chromium/out/

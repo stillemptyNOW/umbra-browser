@@ -1,0 +1,118 @@
+name: ci
+
+# Fast checks on every push. The expensive per-platform packaging lives in
+# release.yml and only runs on a tag.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build brand and shared assets
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Parse every source file
+        working-directory: desktop
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Package unpacked (catches a broken main process early)
+        working-directory: desktop
+        run: npx electron-builder --linux dir --publish never
+
+  android:
+    name: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: gradle --no-daemon assembleDebug
+
+  ios:
+    name: ios
+    # macos-15 for Xcode 16: current XcodeGen emits project format 77, which
+    # Xcode 15 on macos-14 refuses to open.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build for the simulator
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -project Umbra.xcodeproj \
+            -scheme Umbra \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+  chromium-config:
+    name: chromium fork config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: apply.py is syntactically sound and its error paths work
+        run: |
+          python -m py_compile chromium/scripts/apply.py
+          # No checkout present, so this must fail cleanly rather than crash.
+          if python chromium/scripts/apply.py --src does-not-exist; then
+            echo "expected a non-zero exit for a missing checkout" >&2
+            exit 1
+          fi
+
+      - name: Shell scripts parse
+        run: |
+          bash -n chromium/scripts/fetch.sh
+          bash -n chromium/scripts/build.sh

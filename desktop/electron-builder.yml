@@ -1,0 +1,108 @@
+appId: io.umbra.browser
+productName: Umbra
+copyright: Copyright © 2026 stillemptyNOW
+
+# Umbra has no auto-updater. This block exists only because electron-builder
+# generates update metadata for zip and nsis targets regardless, and crashes
+# on a null publish config while doing it. Releases are cut by CI with
+# --publish never; nothing here uploads anything on its own.
+publish:
+  provider: github
+  owner: stillemptyNOW
+  repo: umbra-browser
+  releaseType: release
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - "!**/*.map"
+
+# Umbra ships no crash reporter, no updater ping and no analytics.
+electronDownload:
+  mirror: https://github.com/electron/electron/releases/download/
+
+win:
+  icon: build/icon.ico
+  artifactName: Umbra-${version}-windows-${arch}.${ext}
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Umbra
+  uninstallDisplayName: Umbra Browser
+
+portable:
+  artifactName: Umbra-${version}-windows-portable.${ext}
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  artifactName: Umbra-${version}-macos-${arch}.${ext}
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+
+dmg:
+  title: Umbra ${version}
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+linux:
+  icon: build/icon.png
+  category: Network;WebBrowser
+  synopsis: A private, Chromium-based browser
+  description: |
+    Umbra is a Chromium-based web browser that blocks ads and trackers,
+    resists fingerprinting, upgrades connections to HTTPS and sends no
+    telemetry of any kind.
+  desktop:
+    entry:
+      Name: Umbra
+      GenericName: Web Browser
+      Keywords: browser;web;internet;privacy;
+      MimeType: text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+      StartupWMClass: Umbra
+  artifactName: Umbra-${version}-linux-${arch}.${ext}
+  target:
+    - target: deb
+      arch: [x64, arm64]
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libsecret-1-0
