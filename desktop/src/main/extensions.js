@@ -193,7 +193,10 @@ function iconDataUrl(extensionPath) {
     const action = actionOf(readManifest(extensionPath));
     if (!action?.icon) return null;
     const file = path.join(extensionPath, action.icon.replace(/^\//, ''));
-    if (!path.resolve(file).startsWith(path.resolve(extensionPath))) return null;
+    const root = path.resolve(extensionPath);
+    const resolved = path.resolve(file);
+    const rel = path.relative(root, resolved);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
     const type = path.extname(file).toLowerCase() === '.svg' ? 'image/svg+xml' : 'image/png';
     return `data:${type};base64,${fs.readFileSync(file).toString('base64')}`;
   } catch {

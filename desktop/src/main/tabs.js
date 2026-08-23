@@ -9,31 +9,23 @@ const { WebContentsView, Menu, clipboard, shell } = require('electron');
 const { allowInsecure, wasUpgraded } = require('./rewrite');
 const { resetTabStats, getStats } = require('./adblock');
 const { log } = require('./log');
+const { isTabUrl, isExternalUrl } = require('./urls');
 
 const CONTENT_PRELOAD = path.join(__dirname, '..', 'preload', 'content.js');
 const NEW_TAB = 'umbra://newtab';
 
-/** Load failures worth retrying over plain HTTP after a forced upgrade. */
+/** Load failures that mean the host has no HTTPS, not that TLS is being attacked. */
 const UPGRADE_FAILURES = new Set([
-  -101, // CONNECTION_RESET
   -102, // CONNECTION_REFUSED
-  -107, // SSL_PROTOCOL_ERROR
   -118, // CONNECTION_TIMED_OUT
-  -200, // CERT_COMMON_NAME_INVALID
-  -201, // CERT_DATE_INVALID
-  -202, // CERT_AUTHORITY_INVALID
-  -207, // CERT_WEAK_KEY
   -324, // EMPTY_RESPONSE
 ]);
 
 /** Errors Chromium reports that are not actually a failed page load. */
 const IGNORED_FAILURES = new Set([-3 /* ABORTED */, 0]);
 
-/** Schemes a tab may navigate to itself. */
-const NAVIGABLE_SCHEMES = /^(https?|umbra|file|about|data|blob|view-source):/i;
-
-/** Schemes worth handing to the operating system. Nothing else qualifies. */
-const EXTERNAL_SCHEMES = /^(mailto|tel|sms|webcal|maps|geo):/i;
+/** Schemes a tab may navigate to itself. file: and data: only come from the user. */
+const NAVIGABLE_SCHEMES = /^(https?|umbra|file|about|blob|view-source):/i;
 
 let nextId = 1;
 
@@ -168,20 +160,34 @@ class Tab {
     // Popups become tabs. Nothing gets to open a chromeless window.
     wc.setWindowOpenHandler(({ url, disposition }) => {
       if (disposition === 'save-to-disk') return { action: 'allow' };
-      this.host.createTab({ url, background: disposition === 'background-tab' });
+      if (isTabUrl(url)) {
+        this.host.createTab({ url, background: disposition === 'background-tab' });
+      } else if (isExternalUrl(url)) {
+        shell.openExternal(url).catch(() => {});
+      } else {
+        log.warn('[umbra] refused window.open to an unhandled scheme:', String(url).slice(0, 64));
+      }
       return { action: 'deny' };
     });
 
     wc.on('context-menu', (_e, params) => this.#contextMenu(params));
 
     wc.on('will-navigate', (event, url) => {
+      const from = wc.getURL() || '';
+      // A web page does not get to open files off disk, even though the
+      // omnibox will load a file:// the user typed themselves.
+      if (/^file:/i.test(url) && !/^file:/i.test(from) && !from.startsWith('umbra:')) {
+        event.preventDefault();
+        log.warn('[umbra] refused file: navigation from', from.slice(0, 64));
+        return;
+      }
       if (NAVIGABLE_SCHEMES.test(url)) return;
       event.preventDefault();
 
       // Handing an arbitrary scheme to the OS is how a page gets to launch
       // whatever the user happens to have registered for it. Only these few
       // are worth the risk, and everything else is dropped in silence.
-      if (EXTERNAL_SCHEMES.test(url)) {
+      if (isExternalUrl(url)) {
         shell.openExternal(url).catch(() => {});
       } else {
         log.warn('[umbra] refused navigation to an unhandled scheme:', url.slice(0, 64));
@@ -195,12 +201,22 @@ class Tab {
     const add = (item) => items.push(item);
 
     if (params.linkURL) {
-      add({ label: 'Open link in new tab', click: () => this.host.createTab({ url: params.linkURL, background: true }) });
+      add({
+        label: 'Open link in new tab',
+        click: () => {
+          if (isTabUrl(params.linkURL)) this.host.createTab({ url: params.linkURL, background: true });
+        },
+      });
       add({ label: 'Copy link address', click: () => clipboard.writeText(params.linkURL) });
       add({ type: 'separator' });
     }
     if (params.srcURL && params.mediaType === 'image') {
-      add({ label: 'Open image in new tab', click: () => this.host.createTab({ url: params.srcURL, background: true }) });
+      add({
+        label: 'Open image in new tab',
+        click: () => {
+          if (isTabUrl(params.srcURL)) this.host.createTab({ url: params.srcURL, background: true });
+        },
+      });
       add({ label: 'Copy image', click: () => wc.copyImageAt(params.x, params.y) });
       add({ label: 'Copy image address', click: () => clipboard.writeText(params.srcURL) });
       add({ type: 'separator' });
@@ -228,6 +244,14 @@ class Tab {
   }
 
   navigate(url) {
+    if (isExternalUrl(url)) {
+      shell.openExternal(url).catch(() => {});
+      return;
+    }
+    if (!NAVIGABLE_SCHEMES.test(url)) {
+      log.warn('[umbra] refused navigation to an unhandled scheme:', String(url).slice(0, 64));
+      return;
+    }
     this.url = url;
     this.wc.loadURL(url).catch(() => { /* handled by did-fail-load */ });
   }

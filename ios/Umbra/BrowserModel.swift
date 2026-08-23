@@ -25,8 +25,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         webView.allowsBackForwardNavigationGestures = true
         webView.isOpaque = false
         webView.backgroundColor = .black
-        // Announcing Umbra would be a near-unique signal; look like Safari.
-        webView.customUserAgent = nil
+        // Default WKWebView UA includes the app name. That would be unique.
+        webView.customUserAgent =
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 
         observers = [
             webView.observe(\.title, options: [.new]) { [weak self] view, _ in
@@ -197,11 +198,15 @@ extension BrowserModel: WKNavigationDelegate {
             return
         }
 
-        // Anything that is not the web goes to the system, never to a tab.
-        if let scheme = url.scheme, scheme != "http", scheme != "https", scheme != "about" {
+        let scheme = url.scheme?.lowercased() ?? ""
+        if scheme == "mailto" || scheme == "tel" || scheme == "sms" {
             Task { @MainActor in
                 if UIApplication.shared.canOpenURL(url) { UIApplication.shared.open(url) }
             }
+            decisionHandler(.cancel)
+            return
+        }
+        if scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" {
             decisionHandler(.cancel)
             return
         }

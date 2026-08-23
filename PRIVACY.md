@@ -69,11 +69,12 @@ outright in `desktop/src/main/privacy.js`.
 ## Network
 
 **HTTPS-only.** Navigations to `http://` are rewritten to `https://`. If the
-secure attempt fails with a connection- or certificate-level error *and* Umbra
-was the reason it went to HTTPS, that host is exempted for the rest of the
-session and the plain request is retried. A site that simply has no HTTPS
-therefore works; a site whose HTTPS is broken does not get silently downgraded
-on every future visit.
+secure attempt fails because the host refused the connection, timed out, or
+returned an empty response — and Umbra was the reason it went to HTTPS — that
+host is exempted for the rest of the session and the plain request is retried.
+Certificate errors, TLS protocol errors and connection resets are **not**
+treated as "this host has no HTTPS". Falling back to HTTP in those cases is
+how SSL stripping works, so Umbra does not do it.
 
 **Certificate errors are fatal.** There is no "proceed anyway". This will
 occasionally be inconvenient and it is not going to change.

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * Every network-level privacy defence Umbra applies, in one place.
  *

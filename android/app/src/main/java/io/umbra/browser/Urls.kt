@@ -7,7 +7,11 @@ import java.net.URLEncoder
 object Urls {
 
     private val scheme = Regex("^[a-z][a-z0-9+.\\-]*:", RegexOption.IGNORE_CASE)
-    private val known = Regex("^(https?|about|file|data):", RegexOption.IGNORE_CASE)
+    private val known = Regex("^(https?|about):", RegexOption.IGNORE_CASE)
+    private val forbidden = Regex(
+        "^(javascript|vbscript|data|file|content|intent|android-app|chrome|devtools):",
+        RegexOption.IGNORE_CASE,
+    )
     private val hostLike = Regex("^[^\\s/?#@]+\\.[a-z]{2,63}(:\\d{1,5})?([/?#]|$)", RegexOption.IGNORE_CASE)
     private val localhost = Regex("^(localhost|127\\.0\\.0\\.1|10\\.0\\.2\\.2)(:\\d+)?([/?#]|$)", RegexOption.IGNORE_CASE)
 
@@ -25,10 +29,15 @@ object Urls {
     fun resolve(input: String, searchTemplate: String): String? {
         val text = input.trim()
         if (text.isEmpty()) return null
+        if (forbidden.containsMatchIn(text)) return null
         if (known.containsMatchIn(text)) return text
-        if (scheme.containsMatchIn(text) && !text.contains(' ')) return text
         if (localhost.containsMatchIn(text)) return "http://$text"
         if (hostLike.containsMatchIn(text) && !text.contains(' ')) return "https://$text"
+        // Unknown schemes become a search. Passing them through would let a
+        // paste launch whatever is registered for intent: or slack:.
+        if (scheme.containsMatchIn(text) && !text.contains(' ')) {
+            return searchTemplate.replace("%s", URLEncoder.encode(text, "UTF-8"))
+        }
         return searchTemplate.replace("%s", URLEncoder.encode(text, "UTF-8"))
     }
 

@@ -201,12 +201,14 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?,
             ): Boolean {
-                val raw = request?.url?.toString() ?: return false
-                if (!raw.startsWith("http")) {
-                    // mailto:, tel:, intent: — hand to the system, never to a tab.
-                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
+                val uri = request?.url ?: return false
+                val scheme = uri.scheme?.lowercase() ?: return true
+                if (scheme == "mailto" || scheme == "tel" || scheme == "sms") {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                     return true
                 }
+                if (scheme != "http" && scheme != "https") return true
+                val raw = uri.toString()
                 val cleaned = if (prefs.httpsOnly) Blocker.cleanUrl(raw) else raw
                 if (cleaned != raw) {
                     view?.loadUrl(cleaned)

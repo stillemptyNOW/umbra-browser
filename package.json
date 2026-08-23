@@ -1,6 +1,6 @@
 {
   "name": "umbra-monorepo",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "Umbra — a private, Chromium-based browser. Repository root: brand assets and tooling.",
   "license": "MIT",

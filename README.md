@@ -76,8 +76,9 @@ each is something you can turn off:
 - Deny-by-default permissions. Camera, microphone, location, notifications,
   USB, HID, serial, Bluetooth, MIDI and idle detection are refused without
   asking, unless you opt the category in.
-- Certificate errors are fatal. There is no click-through.
+- Certificate errors are fatal. There is no click-through. HTTPS-only does not fall back to HTTP when TLS fails — that would be SSL stripping.
 - History is local, capped, and used only for address bar completion.
+- Tabs restore on start-up (off if you turn it off). Private windows are never restored.
 - Private windows use an in-memory partition that is wiped on close.
 
 **Extensions** — unpacked Chrome extensions load into every tab, with their

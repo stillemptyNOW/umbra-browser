@@ -123,22 +123,10 @@ async function initBlocker(settings) {
 }
 
 /**
- * Register the blocker's cosmetic-filter preload and IPC handlers on a session.
- *
- * Its webRequest listeners are intentionally overwritten straight afterwards by
- * privacy.attachRequestPipeline(), which calls back into blocker.onBeforeRequest
- * and blocker.onHeadersReceived. Electron only keeps one listener per event, so
- * composing them in one place is the only way to run both.
- */
-/**
- * The blocker's cosmetic-filter IPC handlers are global, not per session, but
- * enableBlockingInSession registers them unconditionally — so calling it for a
- * second partition throws "Attempted to register a second handler" and takes
- * the process with it. That made opening any private window fatal.
- *
- * Dropping the handlers first and letting it re-register is safe: they are the
- * same two methods on the same blocker instance either way, and the preload
- * registration that actually is per-session still happens.
+ * Ghostery's cosmetic IPC handlers are process-global. enableBlockingInSession
+ * re-registers them, so a second partition used to crash with "Attempted to
+ * register a second handler". Drop them first; the per-session preload still
+ * attaches. webRequest listeners are then overwritten by attachRequestPipeline.
  */
 const COSMETIC_HANDLERS = [
   '@ghostery/adblocker/inject-cosmetic-filters',

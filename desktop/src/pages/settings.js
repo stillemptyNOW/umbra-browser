@@ -22,7 +22,7 @@ function schema(engines) {
     {
       title: 'Network',
       rows: [
-        ['httpsOnly', 'HTTPS only', 'Upgrade every navigation, and fall back only when a site genuinely has no HTTPS.'],
+        ['httpsOnly', 'HTTPS only', 'Upgrade every navigation. Falls back to HTTP only if the host refuses HTTPS entirely — never on a certificate error.'],
         ['stripTrackingParams', 'Strip tracking parameters', 'Removes utm_*, fbclid, gclid and friends from addresses.'],
         ['trimReferrer', 'Trim cross-site referrers', 'Send only the origin, never the full page you came from.'],
         ['sendGpc', 'Send Global Privacy Control', 'A legally recognised do-not-sell signal in several jurisdictions.'],
@@ -67,7 +67,7 @@ function schema(engines) {
       title: 'History',
       rows: [
         ['rememberHistory', 'Remember visited pages', 'Used only for address bar completion. Never leaves this machine.'],
-        ['restoreTabs', 'Restore tabs on start-up', ''],
+        ['restoreTabs', 'Restore tabs on start-up', 'Reopens the last session. Private windows are never restored.'],
       ],
     },
   ];

@@ -166,12 +166,43 @@ class BrowserWindowController {
       this.publishSettings();
     });
 
-    for (const url of urls.length ? urls : [settings.get('homepage') || NEW_TAB]) {
+    const start = this.#startUrls(urls);
+    for (const url of start.urls) {
       this.tabs.create({ url, background: true });
     }
-    if (this.tabs.tabs.length) this.tabs.activate(this.tabs.tabs[0].id);
+    if (this.tabs.tabs.length) {
+      const index = Math.max(0, Math.min(start.active, this.tabs.tabs.length - 1));
+      this.tabs.activate(this.tabs.tabs[index].id);
+    }
 
     windows.add(this);
+  }
+
+  // -- session --------------------------------------------------------------
+
+  #startUrls(urls) {
+    if (urls.length) return { urls, active: 0 };
+    const homepage = settings.get('homepage') || NEW_TAB;
+    if (this.isPrivate || !settings.get('restoreTabs')) {
+      return { urls: [homepage], active: 0 };
+    }
+    const saved = settings.get('sessionTabs');
+    if (!Array.isArray(saved) || saved.length === 0) {
+      return { urls: [homepage], active: 0 };
+    }
+    return { urls: saved, active: settings.get('sessionActive') || 0 };
+  }
+
+  persistSession() {
+    if (this.isPrivate) return;
+    const urls = this.tabs.tabs
+      .map((t) => t.url)
+      .filter((u) => typeof u === 'string' && /^(https?:|umbra:)/i.test(u) && !u.startsWith('umbra://error'));
+    settings.set('sessionTabs', urls);
+    settings.set(
+      'sessionActive',
+      Math.max(0, this.tabs.tabs.findIndex((t) => t.id === this.tabs.activeId))
+    );
   }
 
   // -- geometry -------------------------------------------------------------
@@ -451,6 +482,7 @@ class BrowserWindowController {
 
   publish() {
     if (this.win.isDestroyed()) return;
+    this.persistSession();
     this.send('tabs', {
       tabs: this.tabs.list(),
       activeId: this.tabs.activeId,
@@ -477,7 +509,9 @@ class BrowserWindowController {
   }
 
   openExternal(url) {
-    shell.openExternal(url).catch(() => {});
+    if (typeof url === 'string' && /^https?:/i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
   }
 }
 

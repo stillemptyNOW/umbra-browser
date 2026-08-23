@@ -20,6 +20,12 @@ enum Urls {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
 
+        let lowered = text.lowercased()
+        if lowered.hasPrefix("javascript:") || lowered.hasPrefix("data:") ||
+            lowered.hasPrefix("file:") || lowered.hasPrefix("vbscript:") {
+            return nil
+        }
+
         if text.hasPrefix("http://") || text.hasPrefix("https://") || text.hasPrefix("about:") {
             return URL(string: text)
         }

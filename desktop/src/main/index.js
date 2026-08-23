@@ -78,15 +78,19 @@ async function main() {
   // partitions, which prepareSession() covers.
   serveOn(session.defaultSession);
 
-  // Certificate problems are fatal. No click-through, ever.
-  app.on('certificate-error', (event, _wc, url, error) => {
-    event.preventDefault();
+  // Certificate problems are fatal. Do not preventDefault: that cancels
+  // Chromium's rejection, and without callback(false) the request hangs
+  // (or, depending on the Electron version, proceeds).
+  app.on('certificate-error', (_event, _wc, url, error) => {
     log.warn('[umbra] rejected certificate for', url, error);
   });
 
   // Nothing may attach a debugger or spawn a renderer we did not configure.
   app.on('web-contents-created', (_event, contents) => {
     contents.on('will-attach-webview', (event) => event.preventDefault());
+    // Tabs overwrite this with their own handler. Chrome UI, extension
+    // popups and anything else we missed stay denied.
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   });
 
   await initBlocker(settings);

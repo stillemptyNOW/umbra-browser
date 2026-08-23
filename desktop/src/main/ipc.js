@@ -56,9 +56,26 @@ function seedFor(url) {
 function register(windows) {
   windowsApi = windows;
 
-  const controllerFor = (event) =>
-    windowsApi.allWindows().find((w) => w.chrome.webContents.id === event.sender.id) ||
-    windowsApi.focusedWindow();
+  const senderUrl = (event) => {
+    try {
+      return event.senderFrame?.url || event.sender.getURL() || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const isInternalPage = (event) => senderUrl(event).startsWith('umbra:');
+
+  // Chrome UI, or an umbra:// page in a tab. A random website cannot talk
+  // to these handlers just because the preload is injected into every frame.
+  const controllerFor = (event) => {
+    const fromChrome = windowsApi.allWindows().find(
+      (w) => !w.chrome.webContents.isDestroyed() && w.chrome.webContents.id === event.sender.id
+    );
+    if (fromChrome) return fromChrome;
+    if (isInternalPage(event)) return windowsApi.focusedWindow();
+    return null;
+  };
 
   const activeTab = (event, id) => {
     const c = controllerFor(event);
@@ -69,13 +86,17 @@ function register(windows) {
   // -- page preload -------------------------------------------------------
 
   ipcMain.on('umbra:page-config', (event, url) => {
+    // Trust the sender's real URL, not the argument — a page that could
+    // call sendSync would otherwise claim to be umbra:// and get the
+    // internal bridge.
+    const real = senderUrl(event) || String(url || '');
     const cfg = settings.get();
     event.returnValue = {
       defense: cfg.fingerprintDefense,
-      seed: seedFor(url),
+      seed: seedFor(real),
       spoofTimezone: cfg.spoofTimezone,
       spoofLanguage: cfg.spoofLanguage,
-      internal: typeof url === 'string' && url.startsWith('umbra:'),
+      internal: real.startsWith('umbra:'),
     };
   });
 
@@ -92,16 +113,19 @@ function register(windows) {
   }));
 
   ipcMain.on('umbra:internal-search', (event, query) => {
+    if (!isInternalPage(event)) return;
     const url = resolveInput(query, settings.searchTemplate());
     if (url) event.sender.loadURL(url).catch(() => {});
   });
 
   ipcMain.on('umbra:internal-navigate', (event, url) => {
+    if (!isInternalPage(event)) return;
     const resolved = resolveInput(url, settings.searchTemplate());
     if (resolved) event.sender.loadURL(resolved).catch(() => {});
   });
 
-  ipcMain.on('umbra:internal-settings', () => {
+  ipcMain.on('umbra:internal-settings', (event) => {
+    if (!isInternalPage(event)) return;
     const c = windowsApi.focusedWindow();
     if (c) c.tabs.create({ url: 'umbra://settings' });
   });
@@ -217,7 +241,9 @@ function register(windows) {
   });
 
   ipcMain.on('umbra:open-external', (_event, url) => {
-    if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {});
+    if (typeof url === 'string' && /^https?:/i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
   });
 
   ipcMain.on('umbra:copy', (_event, text) => clipboard.writeText(String(text ?? '')));
@@ -231,7 +257,8 @@ function register(windows) {
     engines: Object.entries(SEARCH_ENGINES).map(([id, e]) => ({ id, name: e.name })),
   }));
 
-  ipcMain.on('umbra:settings-set', (_event, { key, value }) => {
+  ipcMain.on('umbra:settings-set', (event, { key, value }) => {
+    if (!controllerFor(event)) return;
     settings.set(key, value);
     applySettingSideEffects(key, value);
     for (const c of windowsApi.allWindows()) {
