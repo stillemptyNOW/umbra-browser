@@ -11,7 +11,8 @@ sitting on a very large amount of other people's, listed here.
 | [Electron](https://github.com/electron/electron) | MIT | The desktop application shell |
 | [Node.js](https://nodejs.org) | MIT | Main-process runtime |
 | [WebKit](https://webkit.org) | LGPL-2.1 / BSD | The iOS engine, as Apple requires |
-| [AndroidX / Jetpack](https://developer.android.com/jetpack) | Apache-2.0 | Android UI and WebView compatibility |
+| [AndroidX / Jetpack](https://developer.android.com/jetpack) | Apache-2.0 | Android UI |
+| [GeckoView](https://mozilla.github.io/geckoview/) | MPL-2.0 | Android browser engine (Firefox) |
 | [Material Components for Android](https://github.com/material-components/material-components-android) | Apache-2.0 | Android theming |
 
 ## Content blocking

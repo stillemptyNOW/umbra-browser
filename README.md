@@ -25,8 +25,8 @@ Grab the latest build from [Releases](https://github.com/stillemptyNOW/umbra-bro
 | Windows 10/11 | `.exe` installer or portable | SmartScreen will warn — see below |
 | macOS 11+ | `.dmg`, Apple silicon and Intel | Gatekeeper will refuse a double-click |
 | Linux | `.deb`, `.AppImage`, `.tar.gz` | |
-| Android 8+ | `.apk` | Signed with a throwaway key |
-| iOS 16+ | `.ipa`, unsigned | Sideload only |
+| Android 8+ | `.apk` (~50–70 MB) | GeckoView — the Firefox engine, inside the APK |
+| iOS 16+ | `.ipa`, unsigned | WKWebView. Apple forbids any other engine on iOS |
 
 **None of it is signed with a paid certificate**, because this project does not
 have one. On Windows, choose "More info" → "Run anyway". On macOS, right-click →
@@ -103,11 +103,12 @@ shortcuts that work while focus is in the page, dev tools, and eight themes.
   40 GB of source and the better part of a day per platform, so it is not what
   the releases contain. [chromium/README.md](chromium/README.md) is candid
   about the trade.
-- **Not equally capable on mobile.** iOS forbids third-party engines, so the
-  iOS build is WKWebView with a WebKit content-rule list. Android uses the
-  system WebView, which is Chromium, but exposes no filter-list hook — so
-  mobile blocking is domain-level, not full filter syntax. Neither can show an
-  honest per-page blocked count on iOS, so neither shows one.
+- **Not a Chromium fork on mobile.** Android 0.2+ ships **GeckoView** (Firefox's
+  engine) inside the APK, which is why that file is tens of megabytes rather
+  than two. iOS still cannot: Apple requires WKWebView, so the `.ipa` is a
+  WebKit shell and will always look small next to the Android build. iOS
+  blocking is a WebKit content-rule list; Android blocking is Gecko's own
+  tracking protection.
 - **Not audited.** One contributor, no security review. Read the code.
 
 ## Repository layout
@@ -115,7 +116,7 @@ shortcuts that work while focus is in the page, dev tools, and eight themes.
 ```
 brand/        the mark, the palette, and the icon pipeline for all five targets
 desktop/      the browser: Electron main process, chrome UI, internal pages
-android/      Kotlin + WebView client
+android/      Kotlin + GeckoView (Firefox engine) client
 ios/          SwiftUI + WKWebView client (XcodeGen; no committed .xcodeproj)
 shared/       blocklist and fingerprinting script, fanned out to both mobile builds
 chromium/     the real-fork track: GN args, substitutions, build scripts

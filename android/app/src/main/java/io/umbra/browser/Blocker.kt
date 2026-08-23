@@ -9,11 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Host-level request blocking.
  *
- * Android's WebView gives no equivalent of Chromium's declarative net request
- * API, so this matches on registrable-domain suffixes rather than running full
- * filter-list syntax. That catches the trackers that matter without pretending
- * to be uBlock Origin — see PRIVACY.md for exactly what the mobile build does
- * and does not do compared with the desktop one.
+ * Host-level extras on top of GeckoView's own tracking protection, plus URL
+ * cleaning for the omnibox (HTTPS upgrade and tracking-parameter strip).
  */
 object Blocker {
 
@@ -85,9 +82,13 @@ object Blocker {
 
     fun intercept(url: String): WebResourceResponse? {
         if (!shouldBlock(url)) return null
+        record()
+        return emptyResponse
+    }
+
+    fun record() {
         sessionCount.incrementAndGet()
         pageCount.incrementAndGet()
-        return emptyResponse
     }
 
     /** Strip campaign parameters, and upgrade the scheme while we are here. */

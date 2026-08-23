@@ -11,8 +11,13 @@ android {
         applicationId = "io.umbra.browser"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.2.0"
+        ndk {
+            // GeckoView ships native libs. Two phone ABIs keep the APK in the
+            // 50–70 MB range of a real mobile browser, not a 2 MB WebView shell.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // A release keystore is supplied through the environment when one exists.
@@ -60,6 +65,9 @@ android {
 
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}")
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -67,9 +75,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
-    implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("org.mozilla.geckoview:geckoview:154.0.20260814215756")
 }

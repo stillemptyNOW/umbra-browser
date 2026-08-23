@@ -168,17 +168,19 @@ browser can fix that.
 
 | | Desktop | Android | iOS |
 |---|---|---|---|
-| Filter lists | full EasyList/EasyPrivacy syntax | domain list (~160 entries) | domain list, as WebKit rules |
-| Cosmetic filtering | yes | no | no |
+| Engine | Chromium via Electron | GeckoView (Firefox), inside the APK | WKWebView (Apple requires this) |
+| Filter lists | full EasyList/EasyPrivacy syntax | Gecko strict ETP | domain list, as WebKit rules |
+| Cosmetic filtering | yes | Gecko's | no |
 | Blocked count | per page and per session | per page and per session | **not available** |
-| Fingerprint defence | full | canvas, WebGL, audio, navigator | same as Android |
+| Fingerprint defence | full | Gecko ETP + farbling | farbling in WKUserScript |
 | DNS over HTTPS | yes, in-browser | system setting | system setting |
 | Third-party cookies | blocked | blocked | blocked |
 
 iOS forbids third-party engines and gives apps no request-interception hook —
 blocking happens inside WebKit, below JavaScript, with no callback. That is
 better for security and it means Umbra genuinely cannot count what it blocked.
-It shows no number rather than inventing one.
+It shows no number rather than inventing one. The `.ipa` is small because the
+engine is the operating system, not a copy of Gecko or Chromium.
 
 **Umbra has not been audited.** It is one person's work with no external
 security review. The code is short and commented; if you are relying on it for

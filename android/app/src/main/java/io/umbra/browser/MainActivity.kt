@@ -1,53 +1,45 @@
 package io.umbra.browser
 
-import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebStorage
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
 import io.umbra.browser.databinding.ActivityMainBinding
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.ContentBlocking
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebRequestError
 
-class Tab(val webView: WebView) {
+class Tab(val session: GeckoSession) {
     var title: String = ""
     var url: String = ""
+    var canGoBack: Boolean = false
+    var canGoForward: Boolean = false
 }
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: Prefs
+    private lateinit var geckoView: GeckoView
 
     private val tabs = mutableListOf<Tab>()
     private var current = -1
-    private var startScript: String = ""
 
     private val activeTab: Tab? get() = tabs.getOrNull(current)
-
-    /** A plain Chrome build. Announcing Umbra would be a near-unique signal. */
-    private val genericUserAgent: String by lazy {
-        val chromeVersion = WebViewCompat.getCurrentWebViewPackage(this)
-            ?.versionName?.substringBefore('.') ?: "131"
-        "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/$chromeVersion.0.0.0 Mobile Safari/537.36"
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,10 +47,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         prefs = Prefs(this)
-        startScript = runCatching {
-            assets.open("farble.js").bufferedReader().use { it.readText() }
-                .replace("__UMBRA_SECRET__", prefs.installSeed)
-        }.getOrDefault("")
+        geckoView = GeckoView(this)
+        binding.webContainer.addView(
+            geckoView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
 
         wireChrome()
 
@@ -69,7 +65,7 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 when {
                     binding.tabSheet.isVisible() -> showTabSheet(false)
-                    activeTab?.webView?.canGoBack() == true -> activeTab?.webView?.goBack()
+                    activeTab?.canGoBack == true -> activeTab?.session?.goBack()
                     tabs.size > 1 -> closeTab(current)
                     else -> finish()
                 }
@@ -82,16 +78,10 @@ class MainActivity : AppCompatActivity() {
         intent.dataString?.let { newTab(it) }
     }
 
-    // -- chrome ---------------------------------------------------------------
-
     private fun wireChrome() {
-        binding.back.setOnClickListener {
-            activeTab?.webView?.takeIf { it.canGoBack() }?.goBack()
-        }
-        binding.forward.setOnClickListener {
-            activeTab?.webView?.takeIf { it.canGoForward() }?.goForward()
-        }
-        binding.reload.setOnClickListener { activeTab?.webView?.reload() }
+        binding.back.setOnClickListener { activeTab?.session?.goBack() }
+        binding.forward.setOnClickListener { activeTab?.session?.goForward() }
+        binding.reload.setOnClickListener { activeTab?.session?.reload() }
         binding.newTab.setOnClickListener { newTab(HOME) }
         binding.tabsButton.setOnClickListener { showTabSheet(!binding.tabSheet.isVisible()) }
         binding.menu.setOnClickListener { showMenu() }
@@ -134,8 +124,8 @@ class MainActivity : AppCompatActivity() {
         if (binding.omnibox.hasFocus().not()) {
             binding.omnibox.setText(Urls.pretty(tab?.url))
         }
-        binding.back.isEnabled = tab?.webView?.canGoBack() == true
-        binding.forward.isEnabled = tab?.webView?.canGoForward() == true
+        binding.back.isEnabled = tab?.canGoBack == true
+        binding.forward.isEnabled = tab?.canGoForward == true
         binding.back.alpha = if (binding.back.isEnabled) 1f else 0.3f
         binding.forward.alpha = if (binding.forward.isEnabled) 1f else 0.3f
         binding.tabCount.text = tabs.size.toString()
@@ -144,129 +134,162 @@ class MainActivity : AppCompatActivity() {
         binding.blockCount.text = if (blocked > 0) blocked.toString() else ""
     }
 
-    // -- tabs -----------------------------------------------------------------
+    private fun attachDelegates(tab: Tab) {
+        val session = tab.session
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun buildWebView(): WebView {
-        val webView = WebView(this)
-
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            loadWithOverviewMode = true
-            useWideViewPort = true
-            builtInZoomControls = true
-            displayZoomControls = false
-            mediaPlaybackRequiresUserGesture = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            allowFileAccess = false
-            allowContentAccess = false
-            setGeolocationEnabled(false)
-            setSupportMultipleWindows(false)
-            userAgentString = if (prefs.desktopSite) {
-                genericUserAgent.replace("Android 14; K", "X11; Linux x86_64").replace(" Mobile", "")
-            } else {
-                genericUserAgent
-            }
-        }
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-            WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, true)
-        }
-        // Safe Browsing is a Google lookup service; Umbra does not use it.
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
-            WebSettingsCompat.setSafeBrowsingEnabled(webView.settings, false)
-        }
-        // Runs before any page script, which is what makes the defence useful.
-        if (prefs.fingerprintDefense && startScript.isNotEmpty() &&
-            WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-        ) {
-            runCatching { WebViewCompat.addDocumentStartJavaScript(webView, startScript, setOf("*")) }
-        }
-
-        CookieManager.getInstance()
-            .setAcceptThirdPartyCookies(webView, !prefs.blockThirdPartyCookies)
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?,
-            ): WebResourceResponse? {
-                if (!prefs.blockTrackers) return null
-                val url = request?.url?.toString() ?: return null
-                return Blocker.intercept(url)
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean,
+            ) {
+                tab.url = url.orEmpty()
+                runOnUiThread { refreshChrome() }
             }
 
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?,
-            ): Boolean {
-                val uri = request?.url ?: return false
-                val scheme = uri.scheme?.lowercase() ?: return true
+            override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
+                tab.canGoBack = canGoBack
+                runOnUiThread { refreshChrome() }
+            }
+
+            override fun onCanGoForward(session: GeckoSession, canGoForward: Boolean) {
+                tab.canGoForward = canGoForward
+                runOnUiThread { refreshChrome() }
+            }
+
+            override fun onLoadRequest(
+                session: GeckoSession,
+                request: GeckoSession.NavigationDelegate.LoadRequest,
+            ): GeckoResult<AllowOrDeny> {
+                val uri = Uri.parse(request.uri)
+                val scheme = uri.scheme?.lowercase().orEmpty()
                 if (scheme == "mailto" || scheme == "tel" || scheme == "sms") {
                     runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-                    return true
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
-                if (scheme != "http" && scheme != "https") return true
-                val raw = uri.toString()
+                if (scheme.isNotEmpty() && scheme != "http" && scheme != "https" &&
+                    scheme != "about" && scheme != "blob"
+                ) {
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+                val raw = request.uri
                 val cleaned = if (prefs.httpsOnly) Blocker.cleanUrl(raw) else raw
-                if (cleaned != raw) {
-                    view?.loadUrl(cleaned)
-                    return true
+                if (cleaned != raw && request.isRedirect.not()) {
+                    session.loadUri(cleaned)
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
-                return false
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
             }
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+            override fun onNewSession(
+                session: GeckoSession,
+                uri: String,
+            ): GeckoResult<GeckoSession> {
+                val created = openTab(uri, load = false)
+                return GeckoResult.fromValue(created.session)
+            }
+
+            override fun onLoadError(
+                session: GeckoSession,
+                uri: String?,
+                error: WebRequestError,
+            ): GeckoResult<String>? = null
+        }
+
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
                 Blocker.resetPage()
-                activeTab?.url = url.orEmpty()
-                binding.progress.visibility = View.VISIBLE
-                refreshChrome()
+                tab.url = url
+                runOnUiThread {
+                    binding.progress.visibility = View.VISIBLE
+                    refreshChrome()
+                }
             }
 
-            override fun onPageFinished(view: WebView?, url: String?) {
-                activeTab?.url = url.orEmpty()
-                activeTab?.title = view?.title.orEmpty()
-                binding.progress.visibility = View.GONE
-                refreshChrome()
-            }
-        }
-
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                binding.progress.progress = newProgress
-                if (newProgress >= 100) binding.progress.visibility = View.GONE
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                runOnUiThread {
+                    binding.progress.visibility = View.GONE
+                    refreshChrome()
+                }
             }
 
-            override fun onReceivedTitle(view: WebView?, title: String?) {
-                activeTab?.title = title.orEmpty()
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                runOnUiThread {
+                    binding.progress.progress = progress
+                    if (progress >= 100) binding.progress.visibility = View.GONE
+                }
             }
         }
 
-        return webView
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                tab.title = title.orEmpty()
+                runOnUiThread { binding.tabList.adapter?.notifyDataSetChanged() }
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                session.open(Engine.runtime(application))
+                if (tab.url.isNotEmpty()) session.loadUri(tab.url)
+            }
+
+            override fun onKill(session: GeckoSession) {
+                onCrash(session)
+            }
+        }
+
+        session.contentBlockingDelegate = object : ContentBlocking.Delegate {
+            override fun onContentBlocked(session: GeckoSession, event: ContentBlocking.BlockEvent) {
+                Blocker.record()
+                runOnUiThread { refreshChrome() }
+            }
+        }
+
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission,
+            ): GeckoResult<Int> {
+                return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+            }
+
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<out String>,
+                callback: GeckoSession.PermissionDelegate.Callback,
+            ) {
+                callback.reject()
+            }
+        }
+    }
+
+    private fun openTab(url: String, load: Boolean = true): Tab {
+        val session = Engine.newSession(desktop = prefs.desktopSite)
+        session.open(Engine.runtime(application))
+        val tab = Tab(session)
+        attachDelegates(tab)
+        tabs.add(tab)
+        showTab(tabs.size - 1)
+        if (load) load(url)
+        return tab
     }
 
     private fun newTab(url: String) {
-        val tab = Tab(buildWebView())
-        tabs.add(tab)
-        showTab(tabs.size - 1)
-        load(url)
+        openTab(url, load = true)
     }
 
     private fun showTab(index: Int) {
         val tab = tabs.getOrNull(index) ?: return
         current = index
-        binding.webContainer.removeAllViews()
-        (tab.webView.parent as? android.view.ViewGroup)?.removeView(tab.webView)
-        binding.webContainer.addView(tab.webView)
+        geckoView.setSession(tab.session)
         refreshChrome()
     }
 
     private fun closeTab(index: Int) {
         val tab = tabs.getOrNull(index) ?: return
         tabs.removeAt(index)
-        binding.webContainer.removeView(tab.webView)
-        tab.webView.apply { stopLoading(); loadUrl("about:blank"); destroy() }
+        if (geckoView.session === tab.session) geckoView.releaseSession()
+        tab.session.close()
 
         if (tabs.isEmpty()) {
             newTab(HOME)
@@ -278,11 +301,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun load(url: String) {
         val target = if (prefs.httpsOnly) Blocker.cleanUrl(url) else url
-        activeTab?.webView?.loadUrl(target)
+        activeTab?.session?.loadUri(target)
         activeTab?.url = target
     }
-
-    // -- menus ----------------------------------------------------------------
 
     private fun showShield() {
         val message = getString(R.string.blocked_here, Blocker.pageBlocked()) + "\n" +
@@ -306,12 +327,13 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 1 -> {
                     prefs.desktopSite = !prefs.desktopSite
-                    activeTab?.webView?.settings?.userAgentString = if (prefs.desktopSite) {
-                        genericUserAgent.replace("Android 14; K", "X11; Linux x86_64").replace(" Mobile", "")
-                    } else {
-                        genericUserAgent
-                    }
-                    activeTab?.webView?.reload()
+                    activeTab?.session?.settings?.userAgentMode =
+                        if (prefs.desktopSite) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+                        else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+                    activeTab?.session?.settings?.viewportMode =
+                        if (prefs.desktopSite) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+                        else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+                    activeTab?.session?.reload()
                 }
                 2 -> shareCurrent()
                 3 -> clearEverything()
@@ -332,20 +354,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun clearEverything() {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
-        WebStorage.getInstance().deleteAllData()
-        for (tab in tabs) {
-            tab.webView.clearCache(true)
-            tab.webView.clearHistory()
-            tab.webView.clearFormData()
-        }
+        Engine.runtime(application).storageController.clearData(
+            org.mozilla.geckoview.StorageController.ClearFlags.ALL
+        )
         Toast.makeText(this, R.string.cleared, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
         if (prefs.clearOnExit && isFinishing) clearEverything()
-        for (tab in tabs) tab.webView.destroy()
+        geckoView.releaseSession()
+        for (tab in tabs) tab.session.close()
         tabs.clear()
         super.onDestroy()
     }

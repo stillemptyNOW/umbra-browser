@@ -61,7 +61,11 @@ hunting for a keychain identity and failing.
 
 ## Android
 
-**Needs:** JDK 17, Android SDK with platform 35, Gradle 8.11+.
+**Needs:** JDK 17, Android SDK with platform 35, Gradle 8.11+, and a network
+path to `https://maven.mozilla.org` (GeckoView is not on Maven Central).
+
+The APK embeds GeckoView — Firefox's engine — so a release build is tens of
+megabytes, not two. That is expected. The system WebView is not used.
 
 There is no Gradle wrapper in this repository. A `gradlew` script without its
 `gradle-wrapper.jar` is worse than none, and committing the jar means shipping
