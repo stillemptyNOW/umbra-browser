@@ -252,14 +252,6 @@ class MainActivity : AppCompatActivity() {
             ): GeckoResult<Int> {
                 return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
             }
-
-            override fun onAndroidPermissionsRequest(
-                session: GeckoSession,
-                permissions: Array<out String>,
-                callback: GeckoSession.PermissionDelegate.Callback,
-            ) {
-                callback.reject()
-            }
         }
     }
 
