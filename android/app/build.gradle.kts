@@ -79,5 +79,5 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("org.mozilla.geckoview:geckoview:154.0.20260814215756")
+    implementation("org.mozilla.geckoview:geckoview:140.0.20250707120347")
 }
